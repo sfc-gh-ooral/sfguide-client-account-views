@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Account Views at App Speed · Snowflake example</title>
+<meta name="description" content="Serve advisor- and client-facing account views straight from Snowflake interactive tables, without a duplicate reporting database. A Snowflake example on synthetic data.">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f6f7fb, #0d1220);
+  --card: light-dark(#ffffff, #141b2d);
+  --card-2: light-dark(#f0f2f8, #1b2439);
+  --border: light-dark(#dde1ec, #2a3550);
+  --text: light-dark(#141a2e, #e8ecf6);
+  --text-2: light-dark(#4a5373, #aab3cc);
+  --muted: light-dark(#6b7493, #8590ad);
+  --accent: light-dark(#1a6fd1, #5aa7f5);
+  --accent-soft: light-dark(rgba(26,111,209,.1), rgba(90,167,245,.14));
+  --warn-soft: light-dark(#fff6e6, #2b2414);
+  --warn-border: light-dark(#f0c36d, #6b5420);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); }
+img, svg { max-width: 100%; height: auto; }
+.wrap { max-width: 1080px; width: 100%; margin: 0 auto; padding: 0 clamp(16px, 4vw, 28px); }
+header.top { border-bottom: 1px solid var(--border); background: var(--card); }
+header.top .wrap { display: flex; align-items: center; gap: 12px; padding-top: 14px; padding-bottom: 14px; flex-wrap: wrap; }
+.mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+.brand { font-weight: 650; }
+.brand small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+nav.links { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+nav.links a { text-decoration: none; color: var(--text-2); }
+nav.links a:hover { color: var(--accent); }
+.hero { padding-top: clamp(36px, 7vw, 72px); padding-bottom: 28px; }
+.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.15; margin: 10px 0 16px; letter-spacing: -.01em; }
+.lede { font-size: clamp(17px, 2.2vw, 19px); color: var(--text-2); max-width: 760px; margin: 0 0 24px; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+.btn { display: inline-block; padding: 10px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text); text-decoration: none; font-weight: 600; font-size: 15px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.fact { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+.fact b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.note { background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 10px; padding: 12px 16px; font-size: 14px; margin: 22px 0 0; }
+section { padding: 44px 0; border-top: 1px solid var(--border); }
+h2 { font-size: clamp(24px, 3.4vw, 30px); margin: 0 0 10px; }
+h3 { font-size: 18px; margin: 0 0 6px; }
+.sub { color: var(--text-2); max-width: 760px; margin: 0 0 24px; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.card p { margin: 0; color: var(--text-2); font-size: 15px; }
+figure { margin: 0 0 34px; }
+figure img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+figcaption { margin-top: 10px; font-size: 15px; color: var(--text-2); }
+figcaption .cap { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 9px; margin-right: 6px; }
+.step { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--card-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+code { background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 0 0 14px; }
+pre code { background: none; padding: 0; }
+ul { padding-left: 20px; }
+li { margin: 4px 0; }
+footer { border-top: 1px solid var(--border); padding: 28px 0 44px; color: var(--muted); font-size: 14px; }
+@media (max-width: 560px) { nav.links { margin-left: 0; width: 100%; gap: 12px; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="mark" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    </div>
+    <div class="brand">Client Account Views at App Speed<small>A Snowflake example on synthetic data</small></div>
+    <nav class="links" aria-label="Page sections">
+      <a href="#walkthrough">Walkthrough</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#get-started">Get started</a>
+      <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Repository</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap hero" id="problem">
+  <div class="eyebrow">Wealth Management · Operations</div>
+  <h1>Serve account pages straight from your analytics data, without a second reporting database</h1>
+  <p class="lede">Many firms copy positions and activity from the warehouse into a separate relational database every night, just to power fast account screens in their advisor platform. That means two pipelines, two bills, and reconciliation breaks when a load fails. This example serves the same account summary, holdings, activity, and performance views directly from Snowflake interactive tables, shows the break the copy would have caused, and lets you measure latency under concurrency and model cost with your own numbers.</p>
+  <div class="cta">
+    <a class="btn primary" href="try/">Try the example in your browser</a>
+    <a class="btn" href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">View the repository</a>
+  </div>
+  <div class="facts">
+    <div class="fact"><b>No-account mode</b>Runs in the browser on synthetic data with latencies captured from a live run</div>
+    <div class="fact"><b>Live mode</b>Interactive tables and warehouses (GA in select regions), Dynamic Tables, Cortex AI</div>
+    <div class="fact"><b>Setup time</b>About 3 minutes in one Snowsight worksheet, for 80M+ synthetic rows</div>
+    <div class="fact"><b>Measured cost</b>About 0.25 credits on XSMALL for setup, plus at least one billed hour of an XSMALL interactive warehouse</div>
+  </div>
+  <p class="note"><strong>Synthetic data, illustrative logic.</strong> Every advisor, household, account, and fund is fictional. This is not production, investment, regulatory, or compliance advice. Latencies come from real runs on the stated warehouse and data volume; yours will differ.</p>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Who it's for</h2>
+    <div class="grid3">
+      <div class="card"><h3>Advisors</h3><p>Open a client's account page and see summary, holdings, activity, and performance load quickly, with a call prep brief on demand.</p></div>
+      <div class="card"><h3>Platform engineers</h3><p>Own the account API and its latency targets. Run concurrent sessions and read p50, p95, and p99 latency.</p></div>
+      <div class="card"><h3>Data platform owners</h3><p>Compare one source of truth with a duplicate reporting stack, and fill in the cost model with your own numbers.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="walkthrough">
+  <div class="wrap">
+    <h2>Walkthrough</h2>
+    <p class="sub">Screenshots of the running app in no-account mode. Every number comes from the synthetic data and a captured live run on an XSMALL interactive warehouse with 500,000 accounts.</p>
+    <figure>
+      <img src="images/01-account-page.png" alt="Advisor account page for Hollis Family Trust: book list, summary KPIs, holdings table, and activity feed, each with a latency chip" loading="lazy">
+      <figcaption><span class="cap">Interactive tables</span><span class="step">1 · The account page loads fast.</span> Summary, holdings, activity, and performance each come from their own interactive table query on an interactive warehouse, scoped to the advisor. Each widget shows its measured round trip.</figcaption>
+    </figure>
+    <figure>
+      <img src="images/03-architecture.png" alt="Architecture compare: a five-step duplicate reporting path beside a two-step Snowflake path, with four reconciliation breaks of 10 vs 8 positions" loading="lazy">
+      <figcaption><span class="cap">Dynamic Tables</span><span class="step">2 · One fewer system.</span> The nightly copy partly failed, so four accounts show 8 positions instead of 10 on this synthetic data set. The single source has nothing to reconcile. Operations can flag each break with a note or export them.</figcaption>
+    </figure>
+    <figure>
+      <img src="images/04-load-test.png" alt="Load test results for a 16-session peak-hour burst: p50 80 ms, p95 96 ms, p99 156 ms, 95.7 queries per second, and a timeline chart" loading="lazy">
+      <figcaption><span class="cap">Interactive warehouse</span><span class="step">3 · Latency under concurrency.</span> Simulated sessions run the four account-page queries with bound parameters on pooled connections. The burst profile models a peak hour. Shown: a captured 16-session burst from a laptop client.</figcaption>
+    </figure>
+    <figure>
+      <img src="images/05-cost-model.png" alt="Cost model with before and after inputs filled in and monthly totals" loading="lazy">
+      <figcaption><span class="cap">Your numbers</span><span class="step">4 · You fill in the cost model.</span> The page ships empty and only adds up what you enter. The values here are illustrative inputs typed for the screenshot, not a claim.</figcaption>
+    </figure>
+    <figure>
+      <img src="images/02-call-prep-brief.png" alt="Performance chart of cumulative return vs benchmark, and an AI call prep brief labeled Sample AI response" loading="lazy">
+      <figcaption><span class="cap">Cortex AI (AI_COMPLETE)</span><span class="step">Bonus · Call prep brief.</span> AI_COMPLETE summarizes the same rows for the advisor to review. In no-account mode it's a labeled sample captured from a live run.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="how-it-works">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Step</th><th>Snowflake capability</th><th>What it does here</th></tr></thead>
+      <tbody>
+        <tr><td>Build serving tables</td><td><a href="https://docs.snowflake.com/en/user-guide/dynamic-tables-about">Dynamic Tables</a></td><td>Current holdings and a one-row account summary are built from 20M positions, 50M activity rows, and 12M monthly returns, with a 1-hour target lag.</td></tr>
+        <tr><td>Serve at low latency</td><td><a href="https://docs.snowflake.com/en/user-guide/interactive">Interactive tables and interactive warehouses</a></td><td>Four interactive tables clustered on advisor and account, refreshed automatically, kept warm by an XSMALL interactive warehouse with a standard fallback warehouse.</td></tr>
+        <tr><td>Account API</td><td>Next.js routes + <code>snowflake-sdk</code></td><td>A connection pool, key-pair auth, and bound parameters. Every query binds the advisor ID, so each advisor reads only their own book.</td></tr>
+        <tr><td>Call prep brief</td><td><a href="https://docs.snowflake.com/en/sql-reference/functions/ai_complete">AI_COMPLETE</a></td><td>Summarizes the account's rows on the standard warehouse for advisor review.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section id="get-started">
+  <div class="wrap">
+    <h2>Get started</h2>
+    <div class="two">
+      <div>
+        <h3>No-account mode</h3>
+        <pre><code>git clone https://github.com/sfc-gh-ooral/sfguide-client-account-views.git
+cd sfguide-client-account-views
+npm install && npm run dev</code></pre>
+        <p>Or <a href="try/">open the hosted example</a>.</p>
+      </div>
+      <div>
+        <h3>Live mode</h3>
+        <ol>
+          <li>Run <code>sql/setup.sql</code> in a Snowsight worksheet as ACCOUNTADMIN, in a region where interactive warehouses are available.</li>
+          <li>Copy <code>.env.example</code> to <code>.env.local</code> and set key-pair auth.</li>
+          <li><code>npm run dev</code>, then switch the header to Live.</li>
+          <li>When done, run <code>sql/cleanup.sql</code>.</li>
+        </ol>
+        <p>Full steps, objects created, and costs are in the <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views#live-mode-deploy-to-your-account">README</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <h2>Limits and disclaimer</h2>
+    <ul>
+      <li>Latency includes the network between the app server and Snowflake. The captured runs used a laptop client and an XSMALL interactive warehouse with one cluster; production servers near your Snowflake region will measure differently.</li>
+      <li>An interactive warehouse bills at least one hour each time it resumes, and its minimum auto-suspend is one hour.</li>
+      <li>The reconciliation break and the large deposit are planted stories on this synthetic data set.</li>
+      <li>Advisor scoping is enforced in the API with bound parameters. For defense in depth, add a row access policy on the interactive tables.</li>
+      <li>The cost model does arithmetic on your inputs only; it makes no savings claim.</li>
+    </ul>
+    <p class="note">This is an illustrative example provided as is. It is not an official Snowflake product, it isn't supported by Snowflake Support, and it contains no customer data. Apache 2.0 license.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">Owner: Oz Oral · Last reviewed: November 2026 · <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Repository</a> · <a href="https://docs.snowflake.com/">Snowflake documentation</a></div>
+</footer>
+</body>
+</html>
