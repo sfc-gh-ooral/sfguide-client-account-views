@@ -8,7 +8,7 @@ fast screens. A Snowflake example for Wealth Management operations, on synthetic
 - **Guide:** https://sfc-gh-ooral.github.io/sfguide-client-account-views/
 - **Try it in your browser (no account):** https://sfc-gh-ooral.github.io/sfguide-client-account-views/try/
 
-![Account desk: an advisor's book on the left, and the Hollis Family Trust account page with a latency chip on every widget](docs/images/01-account-desk.png)
+![Account desk: an advisor's book on the left, and the Hollis Family Trust account page with a latency chip on every widget](docs/images/01-account-desk.jpg)
 
 ## What's in the app
 
