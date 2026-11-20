@@ -1,207 +1,281 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Client Account Views at App Speed · Snowflake example</title>
-<meta name="description" content="Serve advisor- and client-facing account views straight from Snowflake interactive tables, without a duplicate reporting database. A Snowflake example on synthetic data.">
+<meta name="description" content="Serve advisor account pages straight from Snowflake interactive tables instead of a duplicate reporting database. A Snowflake example on synthetic data.">
+<meta name="color-scheme" content="dark light">
 <style>
-:root {
-  color-scheme: light dark;
-  --bg: light-dark(#f6f7fb, #0d1220);
-  --card: light-dark(#ffffff, #141b2d);
-  --card-2: light-dark(#f0f2f8, #1b2439);
-  --border: light-dark(#dde1ec, #2a3550);
-  --text: light-dark(#141a2e, #e8ecf6);
-  --text-2: light-dark(#4a5373, #aab3cc);
-  --muted: light-dark(#6b7493, #8590ad);
-  --accent: light-dark(#1a6fd1, #5aa7f5);
-  --accent-soft: light-dark(rgba(26,111,209,.1), rgba(90,167,245,.14));
-  --warn-soft: light-dark(#fff6e6, #2b2414);
-  --warn-border: light-dark(#f0c36d, #6b5420);
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); }
-img, svg { max-width: 100%; height: auto; }
-.wrap { max-width: 1080px; width: 100%; margin: 0 auto; padding: 0 clamp(16px, 4vw, 28px); }
-header.top { border-bottom: 1px solid var(--border); background: var(--card); }
-header.top .wrap { display: flex; align-items: center; gap: 12px; padding-top: 14px; padding-bottom: 14px; flex-wrap: wrap; }
-.mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
-.brand { font-weight: 650; }
-.brand small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
-nav.links { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
-nav.links a { text-decoration: none; color: var(--text-2); }
-nav.links a:hover { color: var(--accent); }
-.hero { padding-top: clamp(36px, 7vw, 72px); padding-bottom: 28px; }
-.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
-h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.15; margin: 10px 0 16px; letter-spacing: -.01em; }
-.lede { font-size: clamp(17px, 2.2vw, 19px); color: var(--text-2); max-width: 760px; margin: 0 0 24px; }
-.cta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
-.btn { display: inline-block; padding: 10px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text); text-decoration: none; font-weight: 600; font-size: 15px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-.fact { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
-.fact b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.note { background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 10px; padding: 12px 16px; font-size: 14px; margin: 22px 0 0; }
-section { padding: 44px 0; border-top: 1px solid var(--border); }
-h2 { font-size: clamp(24px, 3.4vw, 30px); margin: 0 0 10px; }
-h3 { font-size: 18px; margin: 0 0 6px; }
-.sub { color: var(--text-2); max-width: 760px; margin: 0 0 24px; }
-.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-.card p { margin: 0; color: var(--text-2); font-size: 15px; }
-figure { margin: 0 0 34px; }
-figure img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
-figcaption { margin-top: 10px; font-size: 15px; color: var(--text-2); }
-figcaption .cap { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 9px; margin-right: 6px; }
-.step { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
-.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start; }
-.table-wrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { background: var(--card-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
-code { background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
-pre { background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 0 0 14px; }
-pre code { background: none; padding: 0; }
-ul { padding-left: 20px; }
-li { margin: 4px 0; }
-footer { border-top: 1px solid var(--border); padding: 28px 0 44px; color: var(--muted); font-size: 14px; }
-@media (max-width: 560px) { nav.links { margin-left: 0; width: 100%; gap: 12px; } }
+  :root { --bg:#111317; --panel:#1a1d23; --panel2:#22262e; --line:#2e333d; --ink:#eceae4; --ink2:#a8acb5; --saffron:#f2a93b; --on:#15171b; --mint:#3dd6b5; --coral:#ff7a66; --sky:#7fb2ff; --plum:#c99bff; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f3f1ec; --panel:#fff; --panel2:#ece9e2; --line:#dad5ca; --ink:#17191d; --ink2:#4a4e57; --saffron:#965700; --on:#fff; --mint:#0b7a63; --coral:#b83a26; --sky:#2f5fb3; --plum:#6b3fb0; } }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  a { color: inherit; text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  header.top { border-bottom: 1px solid var(--line); }
+  header.top .wrap { display:flex; align-items:center; gap:12px; height:60px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em; text-decoration:none; }
+  .brand small { font-weight:500; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); }
+  header.top nav { margin-left:auto; display:flex; gap:16px; font-size:14px; }
+  header.top nav a { color: var(--ink2); text-decoration:none; } header.top nav a:hover { color: var(--ink); }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--saffron); }
+  h1, h2, h3 { letter-spacing:-.02em; line-height:1.15; }
+  h1 { font-size: clamp(32px, 5.4vw, 56px); margin: 10px 0 16px; max-width: 16ch; }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); margin: 0 0 12px; }
+  .lead { font-size: 18px; color: var(--ink2); max-width: 62ch; }
+  .hero { padding: 56px 0 40px; display:grid; gap:40px; grid-template-columns: 1.1fr .9fr; align-items:center; }
+  .cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 18px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); font-weight:600; text-decoration:none; }
+  .btn.primary { background:var(--saffron); border-color:var(--saffron); color:var(--on); }
+  .facts { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:22px; font-size:13px; color:var(--ink2); }
+  .facts b { color: var(--ink); }
+  /* Timing strip hero: four widget queries racing, with the captured timings. */
+  .clock { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; }
+  .clock .head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:16px; }
+  .clock .ready { font-size:34px; font-weight:700; color:var(--mint); }
+  .lane { display:grid; grid-template-columns: 96px 1fr 60px; gap:12px; align-items:center; font-size:13px; margin:10px 0; }
+  .lane .track { height:14px; border-radius:4px; background:var(--panel2); overflow:hidden; }
+  .lane .bar { display:block; height:100%; border-radius:4px; transform-origin:left; animation: grow 1.4s cubic-bezier(.2,.8,.2,1) both; }
+  .lane:nth-child(3) .bar { animation-delay:.1s } .lane:nth-child(4) .bar { animation-delay:.2s } .lane:nth-child(5) .bar { animation-delay:.3s }
+  .clock .foot { font-size:12px; color:var(--ink2); margin-top:14px; border-top:1px solid var(--line); padding-top:12px; }
+  @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) { .lane .bar { animation: none; } }
+  section.band { padding: 48px 0; border-top: 1px solid var(--line); }
+  .problem { display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-top:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .card h3 { font-size:17px; margin:6px 0; }
+  .card p { margin:0; color:var(--ink2); font-size:14px; }
+  .num { display:inline-grid; place-items:center; width:28px; height:28px; border-radius:8px; background:var(--saffron); color:var(--on); font-weight:700; font-size:14px; }
+  .beat { display:grid; grid-template-columns: .8fr 1.2fr; gap:28px; align-items:center; margin: 36px 0; }
+  .beat:nth-of-type(even) .copy { order: 2; }
+  .beat h3 { font-size:22px; margin:10px 0 8px; }
+  .beat p { color:var(--ink2); margin:0 0 10px; }
+  .pill { display:inline-block; font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; border:1px dashed var(--line); color:var(--ink2); }
+  figure { margin:0; }
+  figure img { display:block; width:100%; height:auto; border-radius:12px; border:1px solid var(--line); }
+  figcaption { font-size:13px; color:var(--ink2); margin-top:8px; }
+  figcaption b { color: var(--ink); }
+  .phones { display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; max-width:760px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--ink2); font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
+  td.after { color: var(--mint); }
+  .scroll { overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  ul.clean { padding-left: 18px; margin: 8px 0; } ul.clean li { margin: 4px 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; background: var(--panel2); padding: 1px 5px; border-radius: 5px; }
+  .disclaimer { background: var(--panel); border:1px solid var(--line); border-left: 4px solid var(--saffron); border-radius: 10px; padding: 14px 16px; font-size: 14px; color: var(--ink2); }
+  footer { border-top:1px solid var(--line); padding: 28px 0 40px; font-size: 13px; color: var(--ink2); }
+  @media (max-width: 860px) {
+    .hero, .beat, .grid2 { grid-template-columns: 1fr; }
+    .beat:nth-of-type(even) .copy { order: 0; }
+    .problem { grid-template-columns: 1fr; }
+    header.top nav a.hide-sm { display:none; }
+    .phones { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 420px) { .lane { grid-template-columns: 78px 1fr 54px; } .phones { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-
 <header class="top">
   <div class="wrap">
-    <div class="mark" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-    </div>
-    <div class="brand">Client Account Views at App Speed<small>A Snowflake example on synthetic data</small></div>
-    <nav class="links" aria-label="Page sections">
-      <a href="#walkthrough">Walkthrough</a>
-      <a href="#how-it-works">How it works</a>
-      <a href="#get-started">Get started</a>
+    <a class="brand" href="#top" aria-label="Quillstone Advisor Desk, top of page">
+      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="9" fill="#F2A93B"/><rect x="13" y="4" width="6" height="3" rx="1.5" fill="#15171B"/><circle cx="16" cy="18" r="9" fill="none" stroke="#15171B" stroke-width="2.6"/><path d="M16 18 L21 13" stroke="#15171B" stroke-width="2.6" stroke-linecap="round"/></svg>
+      Quillstone <small>Advisor Desk</small>
+    </a>
+    <nav aria-label="Page">
+      <a class="hide-sm" href="#story">Walkthrough</a>
+      <a class="hide-sm" href="#run">Run it</a>
       <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Repository</a>
     </nav>
   </div>
 </header>
 
-<main>
-<div class="wrap hero" id="problem">
-  <div class="eyebrow">Wealth Management · Operations</div>
-  <h1>Serve account pages straight from your analytics data, without a second reporting database</h1>
-  <p class="lede">Many firms copy positions and activity from the warehouse into a separate relational database every night, just to power fast account screens in their advisor platform. That means two pipelines, two bills, and reconciliation breaks when a load fails. This example serves the same account summary, holdings, activity, and performance views directly from Snowflake interactive tables, shows the break the copy would have caused, and lets you measure latency under concurrency and model cost with your own numbers.</p>
-  <div class="cta">
-    <a class="btn primary" href="try/">Try the example in your browser</a>
-    <a class="btn" href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">View the repository</a>
-  </div>
-  <div class="facts">
-    <div class="fact"><b>No-account mode</b>Runs in the browser on synthetic data with latencies captured from a live run</div>
-    <div class="fact"><b>Live mode</b>Interactive tables and warehouses (GA in select regions), Dynamic Tables, Cortex AI</div>
-    <div class="fact"><b>Setup time</b>About 3 minutes in one Snowsight worksheet, for 80M+ synthetic rows</div>
-    <div class="fact"><b>Measured cost</b>About 0.25 credits on XSMALL for setup, plus at least one billed hour of an XSMALL interactive warehouse</div>
-  </div>
-  <p class="note"><strong>Synthetic data, illustrative logic.</strong> Every advisor, household, account, and fund is fictional. This is not production, investment, regulatory, or compliance advice. Latencies come from real runs on the stated warehouse and data volume; yours will differ.</p>
-</div>
-
-<section>
-  <div class="wrap">
-    <h2>Who it's for</h2>
-    <div class="grid3">
-      <div class="card"><h3>Advisors</h3><p>Open a client's account page and see summary, holdings, activity, and performance load quickly, with a call prep brief on demand.</p></div>
-      <div class="card"><h3>Platform engineers</h3><p>Own the account API and its latency targets. Run concurrent sessions and read p50, p95, and p99 latency.</p></div>
-      <div class="card"><h3>Data platform owners</h3><p>Compare one source of truth with a duplicate reporting stack, and fill in the cost model with your own numbers.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="walkthrough">
-  <div class="wrap">
-    <h2>Walkthrough</h2>
-    <p class="sub">Screenshots of the running app in no-account mode. Every number comes from the synthetic data and a captured live run on an XSMALL interactive warehouse with 500,000 accounts.</p>
-    <figure>
-      <img src="images/01-account-page.png" alt="Advisor account page for Hollis Family Trust: book list, summary KPIs, holdings table, and activity feed, each with a latency chip" loading="lazy">
-      <figcaption><span class="cap">Interactive tables</span><span class="step">1 · The account page loads fast.</span> Summary, holdings, activity, and performance each come from their own interactive table query on an interactive warehouse, scoped to the advisor. Each widget shows its measured round trip.</figcaption>
-    </figure>
-    <figure>
-      <img src="images/03-architecture.png" alt="Architecture compare: a five-step duplicate reporting path beside a two-step Snowflake path, with four reconciliation breaks of 10 vs 8 positions" loading="lazy">
-      <figcaption><span class="cap">Dynamic Tables</span><span class="step">2 · One fewer system.</span> The nightly copy partly failed, so four accounts show 8 positions instead of 10 on this synthetic data set. The single source has nothing to reconcile. Operations can flag each break with a note or export them.</figcaption>
-    </figure>
-    <figure>
-      <img src="images/04-load-test.png" alt="Load test results for a 16-session peak-hour burst: p50 80 ms, p95 96 ms, p99 156 ms, 95.7 queries per second, and a timeline chart" loading="lazy">
-      <figcaption><span class="cap">Interactive warehouse</span><span class="step">3 · Latency under concurrency.</span> Simulated sessions run the four account-page queries with bound parameters on pooled connections. The burst profile models a peak hour. Shown: a captured 16-session burst from a laptop client.</figcaption>
-    </figure>
-    <figure>
-      <img src="images/05-cost-model.png" alt="Cost model with before and after inputs filled in and monthly totals" loading="lazy">
-      <figcaption><span class="cap">Your numbers</span><span class="step">4 · You fill in the cost model.</span> The page ships empty and only adds up what you enter. The values here are illustrative inputs typed for the screenshot, not a claim.</figcaption>
-    </figure>
-    <figure>
-      <img src="images/02-call-prep-brief.png" alt="Performance chart of cumulative return vs benchmark, and an AI call prep brief labeled Sample AI response" loading="lazy">
-      <figcaption><span class="cap">Cortex AI (AI_COMPLETE)</span><span class="step">Bonus · Call prep brief.</span> AI_COMPLETE summarizes the same rows for the advisor to review. In no-account mode it's a labeled sample captured from a live run.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<section id="how-it-works">
-  <div class="wrap">
-    <h2>How it works</h2>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Step</th><th>Snowflake capability</th><th>What it does here</th></tr></thead>
-      <tbody>
-        <tr><td>Build serving tables</td><td><a href="https://docs.snowflake.com/en/user-guide/dynamic-tables-about">Dynamic Tables</a></td><td>Current holdings and a one-row account summary are built from 20M positions, 50M activity rows, and 12M monthly returns, with a 1-hour target lag.</td></tr>
-        <tr><td>Serve at low latency</td><td><a href="https://docs.snowflake.com/en/user-guide/interactive">Interactive tables and interactive warehouses</a></td><td>Four interactive tables clustered on advisor and account, refreshed automatically, kept warm by an XSMALL interactive warehouse with a standard fallback warehouse.</td></tr>
-        <tr><td>Account API</td><td>Next.js routes + <code>snowflake-sdk</code></td><td>A connection pool, key-pair auth, and bound parameters. Every query binds the advisor ID, so each advisor reads only their own book.</td></tr>
-        <tr><td>Call prep brief</td><td><a href="https://docs.snowflake.com/en/sql-reference/functions/ai_complete">AI_COMPLETE</a></td><td>Summarizes the account's rows on the standard warehouse for advisor review.</td></tr>
-      </tbody>
-    </table></div>
-  </div>
-</section>
-
-<section id="get-started">
-  <div class="wrap">
-    <h2>Get started</h2>
-    <div class="two">
-      <div>
-        <h3>No-account mode</h3>
-        <pre><code>git clone https://github.com/sfc-gh-ooral/sfguide-client-account-views.git
-cd sfguide-client-account-views
-npm install && npm run dev</code></pre>
-        <p>Or <a href="try/">open the hosted example</a>.</p>
+<main id="top">
+  <div class="wrap hero">
+    <div>
+      <div class="eyebrow">Wealth Management · Operations · Snowflake example</div>
+      <h1>Serve account pages from the data you already trust.</h1>
+      <p class="lead">Many firms copy warehouse data into a separate reporting database just so advisor screens load fast. That means a second pipeline, a second bill, and nights when the copy disagrees with the source. This example serves the advisor account page (summary, holdings, activity, performance) straight from Snowflake interactive tables, then puts the copy, the latency and the cost side by side.</p>
+      <div class="cta">
+        <a class="btn primary" href="try/">Try the example in your browser</a>
+        <a class="btn" href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Get the code</a>
       </div>
-      <div>
-        <h3>Live mode</h3>
-        <ol>
-          <li>Run <code>sql/setup.sql</code> in a Snowsight worksheet as ACCOUNTADMIN, in a region where interactive warehouses are available.</li>
-          <li>Copy <code>.env.example</code> to <code>.env.local</code> and set key-pair auth.</li>
-          <li><code>npm run dev</code>, then switch the header to Live.</li>
-          <li>When done, run <code>sql/cleanup.sql</code>.</li>
-        </ol>
-        <p>Full steps, objects created, and costs are in the <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views#live-mode-deploy-to-your-account">README</a>.</p>
+      <div class="facts">
+        <span><b>No account</b> needed to try it</span>
+        <span>Live setup: <b>about 3 minutes</b>, <b>0.30 credits</b> on XSMALL</span>
+        <span>Plus <b>one hour minimum</b> of an XSMALL interactive warehouse per session</span>
       </div>
     </div>
+    <div class="clock" role="img" aria-label="Captured timings for one account page: summary 680 ms, holdings 634 ms, activity 650 ms, performance 657 ms; the page was ready in 680 milliseconds.">
+      <div class="head"><span class="eyebrow">One account page, captured live</span><span class="ready mono">680 ms</span></div>
+      <div class="lane"><span>Summary</span><span class="track"><span class="bar" style="width:97%;background:var(--saffron)"></span></span><span class="mono">680 ms</span></div>
+      <div class="lane"><span>Holdings</span><span class="track"><span class="bar" style="width:91%;background:var(--mint)"></span></span><span class="mono">634 ms</span></div>
+      <div class="lane"><span>Activity</span><span class="track"><span class="bar" style="width:93%;background:var(--sky)"></span></span><span class="mono">650 ms</span></div>
+      <div class="lane"><span>Performance</span><span class="track"><span class="bar" style="width:94%;background:var(--plum)"></span></span><span class="mono">657 ms</span></div>
+      <div class="foot">Four queries in parallel on an XSMALL interactive warehouse, 500,000 synthetic accounts, round trip from a laptop including the network. This capture was the first page after setup, with a cold cache. Across all 28 captured pages the median page-ready time was about 225 ms.</div>
+    </div>
   </div>
-</section>
 
-<section id="limits">
-  <div class="wrap">
-    <h2>Limits and disclaimer</h2>
-    <ul>
-      <li>Latency includes the network between the app server and Snowflake. The captured runs used a laptop client and an XSMALL interactive warehouse with one cluster; production servers near your Snowflake region will measure differently.</li>
-      <li>An interactive warehouse bills at least one hour each time it resumes, and its minimum auto-suspend is one hour.</li>
-      <li>The reconciliation break and the large deposit are planted stories on this synthetic data set.</li>
-      <li>Advisor scoping is enforced in the API with bound parameters. For defense in depth, add a row access policy on the interactive tables.</li>
-      <li>The cost model does arithmetic on your inputs only; it makes no savings claim.</li>
-    </ul>
-    <p class="note">This is an illustrative example provided as is. It is not an official Snowflake product, it isn't supported by Snowflake Support, and it contains no customer data. Apache 2.0 license.</p>
-  </div>
-</section>
+  <section class="band">
+    <div class="wrap">
+      <div class="eyebrow">The problem</div>
+      <h2>Two copies of the truth, kept in sync every night</h2>
+      <div class="problem">
+        <div class="card"><h3>The advisor</h3><p>Needs the account page to open fast, show today's holdings and recent activity, and match what operations sees.</p></div>
+        <div class="card"><h3>The platform engineer</h3><p>Owns the account API and its latency targets, especially at market open when sessions spike.</p></div>
+        <div class="card"><h3>The data platform owner</h3><p>Runs the extra ETL and reporting database, chases reconciliation breaks, and pays for both stacks.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="story">
+    <div class="wrap">
+      <div class="eyebrow">Walkthrough</div>
+      <h2>Four steps through the example</h2>
+
+      <div class="beat">
+        <div class="copy">
+          <span class="num">1</span>
+          <h3>The account page loads, and every widget shows its time</h3>
+          <p>An advisor's book of 1,250 accounts sits on the left, with pills for copy mismatches, large 7-day flows and accounts behind benchmark. The account page reads four interactive tables in parallel, and a waterfall shows how long each took.</p>
+          <span class="pill">Interactive tables · interactive warehouse</span>
+        </div>
+        <figure>
+          <img src="images/01-account-desk.jpg" width="1440" height="900" loading="lazy" alt="Account desk: Priya Castellane's book of 1,250 accounts on the left, and the Hollis Family Trust account page with market value, YTD return, a $250,000 seven-day flow, and a waterfall of four widget timings">
+          <figcaption><b>Account desk.</b> Each widget's latency chip and the waterfall come from queries on Snowflake <b>interactive tables</b> served by an <b>interactive warehouse</b>. Sample mode shows timings captured live.</figcaption>
+        </figure>
+      </div>
+
+      <div class="beat">
+        <div class="copy">
+          <span class="num">2</span>
+          <h3>A cited brief for the next client call</h3>
+          <p>One click drafts three points and a question from the rows on the page. Each point is tagged with the widget it came from. The advisor writes their own note and marks the call prepared.</p>
+          <span class="pill">Cortex AI_COMPLETE</span>
+        </div>
+        <figure>
+          <img src="images/02-call-prep.jpg" width="1440" height="900" loading="lazy" alt="AI call prep panel labeled Sample AI response, with three bullet points on allocation, the $250,000 deposit and performance versus benchmark, each tagged with source chips, and a suggested client question">
+          <figcaption><b>AI call prep.</b> Drafted with <b>Cortex AI_COMPLETE</b> from the account's own rows, with source tags. In the hosted example the text is a captured <b>Sample AI response</b>.</figcaption>
+        </figure>
+      </div>
+
+      <div class="beat">
+        <div class="copy">
+          <span class="num">3</span>
+          <h3>One fewer system, and no reconciliation break</h3>
+          <p>The before path copies positions nightly into a reporting database. On this synthetic data set a batch timed out, so four accounts show 8 positions instead of 10. The after path reads the source, refreshed by dynamic tables.</p>
+          <span class="pill">Dynamic Tables</span>
+        </div>
+        <figure>
+          <img src="images/04-architecture.jpg" width="1440" height="900" loading="lazy" alt="Architecture compare: a five-step before rail with a failed nightly ETL, a four-step after rail on Snowflake, a side-by-side table of moving parts and freshness, and four accounts whose copy holds 8 of 10 positions">
+          <figcaption><b>Architecture compare.</b> Serving tables are built by <b>Dynamic Tables</b> with a one-hour target lag; the duplicate path is simulated in the same account.</figcaption>
+        </figure>
+      </div>
+
+      <div class="beat">
+        <div class="copy">
+          <h3 style="margin-top:0">See the missing positions</h3>
+          <p>Each break opens a position-by-position comparison, and the list exports to CSV or goes to data operations.</p>
+        </div>
+        <figure>
+          <img src="images/05-recon-drawer.jpg" width="1440" height="900" loading="lazy" alt="Drawer comparing Hollis Family Trust positions: two funds marked Missing in the copy, eight funds matching, and $417,400 missing">
+          <figcaption><b>Reconciliation drawer.</b> A full outer join of the <b>dynamic table</b> holdings against the copy, scoped to the advisor.</figcaption>
+        </figure>
+      </div>
+
+      <div class="beat">
+        <div class="copy">
+          <span class="num">4</span>
+          <h3>Latency at market open, then the cost in your numbers</h3>
+          <p>The load lab replays a seeded market-open surge with up to 32 concurrent sessions. In the captured 32-session replay, p95 was 222 ms with no errors on this synthetic data. The cost model then adds up only the numbers you enter.</p>
+          <span class="pill">Interactive warehouse · bound parameters</span>
+        </div>
+        <figure>
+          <img src="images/06-load-lab.jpg" width="1440" height="900" loading="lazy" alt="Load lab: a trading-day trace of advisor sessions with a market-open peak, run controls, and a captured 16-session result with p50 196 ms, p95 210 ms, p99 272 ms and 39.7 queries per second">
+          <figcaption><b>Load lab.</b> Concurrent sessions query the <b>interactive warehouse</b> through a pooled connection with bound parameters; each result states the warehouse size and data volume.</figcaption>
+        </figure>
+      </div>
+
+      <div class="beat">
+        <div class="copy">
+          <h3 style="margin-top:0">A cost model with no claims built in</h3>
+          <p>Nothing is prefilled. An optional fill uses round placeholder numbers set so both sides tie, just to show how the model works.</p>
+        </div>
+        <figure>
+          <img src="images/07-cost-model.jpg" width="1440" height="900" loading="lazy" alt="Cost model with placeholder inputs for the reporting database and Snowflake serving, monthly totals, a composition bar chart, and a sensitivity curve by hours per day">
+          <figcaption><b>Cost model.</b> Plain arithmetic in the browser; credit rates come from your contract and the Snowflake consumption table.</figcaption>
+        </figure>
+      </div>
+
+      <h3>Works on a phone</h3>
+      <div class="phones">
+        <figure><img src="images/m1-book.jpg" width="780" height="1688" loading="lazy" alt="Phone view of the advisor's book with KPI tiles and the account list"><figcaption>The book at 390 px.</figcaption></figure>
+        <figure><img src="images/m2-account.jpg" width="780" height="1688" loading="lazy" alt="Phone view of the Hollis Family Trust account page with a Back button and KPI tiles"><figcaption>An account, opened from the book.</figcaption></figure>
+        <figure><img src="images/m3-load-lab.jpg" width="780" height="1688" loading="lazy" alt="Phone view of the load lab controls"><figcaption>The load lab.</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <div class="eyebrow">Side by side</div>
+      <h2>What changes when the page reads Snowflake directly</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Measure, on this synthetic data set</th><th>Duplicate reporting copy</th><th>Served from Snowflake</th></tr></thead>
+          <tbody>
+            <tr><td>Systems on the read path</td><td>5</td><td class="after">3</td></tr>
+            <tr><td>Extra pipelines to run</td><td>1 nightly ETL</td><td class="after">None (dynamic tables refresh in place)</td></tr>
+            <tr><td>Freshness</td><td>Loaded overnight from the prior close</td><td class="after">Target lag 1 hour</td></tr>
+            <tr><td>Current positions held</td><td class="mono">4,999,992</td><td class="after mono">5,000,000</td></tr>
+            <tr><td>Accounts that disagree with the source</td><td class="mono">4</td><td class="after mono">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="run">
+    <div class="wrap grid2">
+      <div>
+        <div class="eyebrow">Run it</div>
+        <h2>Try it, then run it live</h2>
+        <ul class="clean">
+          <li><b>In your browser:</b> <a href="try/">the hosted example</a> runs on bundled synthetic data with timings and AI text captured from a live run.</li>
+          <li><b>On your laptop:</b> <code>npm install &amp;&amp; npm run dev</code>, no account needed.</li>
+          <li><b>Live:</b> run <code>sql/setup.sql</code> as ACCOUNTADMIN, add key-pair settings to <code>.env.local</code>, and switch the header to Live. <code>sql/cleanup.sql</code> removes everything.</li>
+        </ul>
+        <p class="lead" style="font-size:15px">Needs a region where interactive warehouses are available; tested on Enterprise Edition in AWS US East. Setup creates one database, two XSMALL warehouses and a least-privilege role.</p>
+      </div>
+      <div>
+        <div class="eyebrow">Snowflake documentation</div>
+        <h2>Learn more</h2>
+        <ul class="clean">
+          <li><a href="https://docs.snowflake.com/en/user-guide/interactive">Interactive tables and interactive warehouses</a></li>
+          <li><a href="https://docs.snowflake.com/en/sql-reference/sql/create-interactive-warehouse">CREATE INTERACTIVE WAREHOUSE</a></li>
+          <li><a href="https://docs.snowflake.com/en/user-guide/dynamic-tables-about">Dynamic tables</a></li>
+          <li><a href="https://docs.snowflake.com/en/sql-reference/functions/ai_complete">AI_COMPLETE</a></li>
+          <li><a href="https://docs.snowflake.com/en/user-guide/key-pair-auth">Key-pair authentication</a></li>
+          <li><a href="https://docs.snowflake.com/en/user-guide/cost-understanding-compute">Understanding compute cost</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <p class="disclaimer"><b style="color:var(--ink)">Synthetic data, illustrative logic.</b> Quillstone and every advisor, household, account and fund here are fictional. Latency numbers come from one client location and are not a benchmark. This is an illustrative example provided as is: not an official Snowflake product, not supported by Snowflake Support, and not production, investment, regulatory or compliance advice.</p>
+    </div>
+  </section>
 </main>
 
 <footer>
-  <div class="wrap">Owner: Oz Oral · Last reviewed: November 2026 · <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Repository</a> · <a href="https://docs.snowflake.com/">Snowflake documentation</a></div>
+  <div class="wrap">Apache 2.0 · <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views">Repository</a> · Owner: Oz Oral · Last reviewed: November 2026</div>
 </footer>
 </body>
 </html>

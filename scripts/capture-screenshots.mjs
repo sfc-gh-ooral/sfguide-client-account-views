@@ -1,114 +1,58 @@
-// Captures the landing-page screenshots and catalog card images from the hosted example.
-//
-//   npm run build:example        # refresh docs/try/ first if the UI changed
-//   npm run capture              # writes docs/images/*.png and docs/catalog/*.jpg
-//
-// Runs headless Chromium at a fixed viewport, so image size never depends on your screen
-// or editor window. It uses a fresh browser with no sign-in: only synthetic sample data
-// can appear in the images. Review every image before publishing anyway.
+// Screenshots of the running app in Sample mode, for the landing page (docs/images/).
+// Usage: npm run dev, then node scripts/capture-screenshots.mjs [http://localhost:3000] [outDir]
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
 
-import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
-import { createServer } from "node:http";
-import { extname, join, normalize, resolve } from "node:path";
-import { chromium } from "playwright";
+const BASE = process.argv[2] ?? 'http://localhost:3000';
+const OUT = process.argv[3] ?? 'docs/images';
+mkdirSync(OUT, { recursive: true });
+const b = await chromium.launch();
 
-const ROOT = resolve(import.meta.dirname, "..");
-const DOCS = join(ROOT, "docs");
-const BASE = "/sfguide-client-account-views/try"; // must match basePath in next.config.ts
-const CARD_ID = "client-account-views";           // catalog id: cards are <id>-<n>.jpg
-
-const VIEWPORT = { width: 1600, height: 1000 };       // 16:10, same shape as catalog cards
-const PAGE_SCALE = 1.25;                              // 2000x1250 PNGs: sharp, and under the guide's 500 KB
-const CARD_SCALE = 0.6;                               // 1600x1000 CSS px -> 960x600 card
-const SCHEME = process.env.COLOR_SCHEME || "dark";   // "dark" or "light"
-
-// The walkthrough, in landing-page order. `card` marks which shots become catalog cards (in that order).
-const SHOTS = [
-  { name: "01-account-page", card: 1, path: "/", wait: "text=Hollis Family Trust" },
-  {
-    name: "02-call-prep-brief", card: 5, path: "/", wait: "text=Hollis Family Trust",
-    async act(page) {
-      await page.getByRole("button", { name: "Draft brief" }).click();
-      await page.locator(".ai-panel").waitFor({ timeout: 15000 });
-      await page.locator(".ai-panel").scrollIntoViewIfNeeded();
-    },
-  },
-  { name: "03-architecture", card: 2, path: "/architecture/", wait: "text=AC-012817" },
-  {
-    name: "04-load-test", card: 3, path: "/load-test/", wait: "text=p95",
-    async act(page) {
-      await page.getByRole("button", { name: "Run" }).click();
-      await page.locator(".reasoning").waitFor();
-      await page.locator(".reasoning").waitFor({ state: "detached", timeout: 15000 });
-    },
-  },
-  {
-    name: "05-cost-model", card: 4, path: "/cost/",
-    async act(page) {
-      // Illustrative inputs typed in for the screenshot only; the page ships empty.
-      const vals = ["9000", "2500", "40", "120", "3", "1", "12", "1", "0.5", "10"];
-      const inputs = page.locator("input.field");
-      for (let i = 0; i < vals.length; i++) await inputs.nth(i).fill(vals[i]);
-    },
-  },
-];
-
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".txt": "text/plain", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".ico": "image/x-icon" };
-
-// Serves docs/try/ at the GitHub Pages path, the way the hosted example is published.
-function serve() {
-  const server = createServer((req, res) => {
-    const url = new URL(req.url, "http://localhost");
-    if (!url.pathname.startsWith(BASE)) { res.writeHead(404).end(); return; }
-    let file = normalize(join(DOCS, "try", decodeURIComponent(url.pathname.slice(BASE.length))));
-    if (!file.startsWith(join(DOCS, "try"))) { res.writeHead(403).end(); return; }
-    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-    if (!existsSync(file)) { res.writeHead(404).end(); return; }
-    res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
-    createReadStream(file).pipe(res);
-  });
-  return new Promise((done) => server.listen(0, "127.0.0.1", () => done(server)));
+async function page(viewport, scheme = 'dark') {
+  const ctx = await b.newContext({ viewport, deviceScaleFactor: viewport.width < 500 ? 2 : 1, colorScheme: scheme, reducedMotion: 'reduce' });
+  await ctx.addInitScript(() => { localStorage.setItem('cav-mode', 'sample'); localStorage.setItem('qs-advisor', 'ADV-0017'); });
+  return ctx.newPage();
 }
+const shot = async (p, name, full = false) => { await p.waitForTimeout(900); await p.screenshot({ path: `${OUT}/${name}.png`, fullPage: full }); console.log('saved', name); };
+const D = { width: 1440, height: 900 };
 
-async function settle(page) {
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => document.fonts.ready);
-  // Let entrance animations finish so every run produces the same frame.
-  await page.waitForTimeout(800);
-}
+let p = await page(D);
+await p.goto(BASE + '/'); await p.getByText('Ready in').waitFor({ timeout: 30000 });
+await shot(p, '01-account-desk');
+await p.getByRole('button', { name: 'Draft brief' }).click();
+await p.getByText('Sources:').waitFor({ timeout: 30000 });
+await p.getByText('Brief for the next client call').scrollIntoViewIfNeeded();
+await p.evaluate(() => window.scrollTo(0, 120));
+await shot(p, '02-call-prep');
+await p.evaluate(() => window.scrollTo(0, 900));
+await shot(p, '03-holdings-performance');
 
-async function main() {
-  if (!existsSync(join(DOCS, "try", "index.html"))) throw new Error("docs/try/ is missing. Run `npm run build:example` first.");
-  mkdirSync(join(DOCS, "images"), { recursive: true });
-  mkdirSync(join(DOCS, "catalog"), { recursive: true });
-  const server = await serve();
-  const origin = `http://127.0.0.1:${server.address().port}${BASE}`;
-  const browser = await chromium.launch();
-  try {
-    for (const shot of SHOTS) {
-      for (const [scale, out] of [
-        [PAGE_SCALE, join(DOCS, "images", `${shot.name}.png`)],
-        ...(shot.card ? [[CARD_SCALE, join(DOCS, "catalog", `${CARD_ID}-${shot.card}.jpg`)]] : []),
-      ]) {
-        const context = await browser.newContext({
-          viewport: VIEWPORT, deviceScaleFactor: scale, colorScheme: SCHEME, reducedMotion: "reduce",
-          // Fixed locale and time zone so dates render the same on every machine.
-          locale: "en-US", timezoneId: "America/New_York",
-        });
-        const page = await context.newPage();
-        await page.goto(origin + shot.path);
-        if (shot.wait) await page.locator(shot.wait).first().waitFor();
-        await settle(page);
-        if (shot.act) { await shot.act(page); await settle(page); }
-        await page.screenshot({ path: out, ...(out.endsWith(".jpg") ? { type: "jpeg", quality: 82 } : {}) });
-        await context.close();
-        console.log(`${out.replace(ROOT + "/", "")}  ${Math.round(statSync(out).size / 1024)} KB`);
-      }
-    }
-  } finally {
-    await browser.close();
-    server.close();
-  }
-}
+await p.goto(BASE + '/architecture'); await p.getByText('Copy load status').waitFor({ timeout: 30000 });
+await shot(p, '04-architecture');
+await p.getByRole('button', { name: /Compare positions for Hollis/ }).click();
+await p.getByText('Missing').first().waitFor({ timeout: 30000 });
+await shot(p, '05-recon-drawer');
 
-main().catch((failure) => { console.error(failure.message); process.exit(1); });
+await p.goto(BASE + '/load-test'); await p.getByText('Every round trip, bucketed').waitFor({ timeout: 30000 });
+await shot(p, '06-load-lab');
+
+await p.goto(BASE + '/cost'); await p.getByRole('button', { name: /placeholder numbers/ }).click();
+await shot(p, '07-cost-model');
+
+const M = { width: 390, height: 844 };
+p = await page(M);
+await p.goto(BASE + '/'); await p.getByText('Book').first().waitFor();
+await p.waitForTimeout(1500);
+await shot(p, 'm1-book');
+await p.getByRole('button', { name: /Hollis Family Trust/ }).first().click();
+await p.getByText('Ready in').waitFor({ timeout: 30000 });
+await shot(p, 'm2-account');
+await p.goto(BASE + '/load-test'); await p.getByText('Every round trip, bucketed').waitFor({ timeout: 30000 });
+await shot(p, 'm3-load-lab');
+const wide = await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+console.log('horizontal scroll at 390px:', wide);
+
+p = await page(D, 'light');
+await p.goto(BASE + '/'); await p.getByText('Ready in').waitFor({ timeout: 30000 });
+await shot(p, '08-account-desk-light');
+await b.close();

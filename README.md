@@ -2,25 +2,26 @@
 
 Serve advisor- and client-facing account views (summary, holdings, activity, performance) straight
 from Snowflake, instead of copying warehouse data into a separate reporting database just to power
-fast screens. A Snowflake example for Wealth Management operations, on synthetic data.
+fast screens. A Snowflake example for Wealth Management operations, on synthetic data, presented as
+**Quillstone Advisor Desk**, a fictional advisor platform.
 
 - **Guide:** https://sfc-gh-ooral.github.io/sfguide-client-account-views/
 - **Try it in your browser (no account):** https://sfc-gh-ooral.github.io/sfguide-client-account-views/try/
 
-![Advisor account page with latency chips on each widget](docs/images/01-account-page.png)
+![Account desk: an advisor's book on the left, and the Hollis Family Trust account page with a latency chip on every widget](docs/images/01-account-desk.png)
 
 ## What's in the app
 
 | Screen | What it shows | Snowflake capability |
 | --- | --- | --- |
-| **Account page** | Book explorer, summary, holdings, activity, and a 24-month performance chart. Each widget shows its own query latency (live, or captured in Sample mode). "View as" switches between two advisors' books. **Call prep brief** drafts a summary for advisor review. | Interactive tables on an interactive warehouse; AI_COMPLETE |
-| **Architecture compare** | Before (warehouse → nightly ETL → reporting database → reconciliation → API) vs after (Snowflake → API), freshness, and the reconciliation break the partial nightly load caused. Flag a break for operations with a note, or export CSV. | Dynamic Tables |
-| **Load test** | N concurrent sessions (1–32) run the four account-page query shapes for random accounts. Shows p50/p95/p99, throughput, errors, a timeline, and estimated credits from your rate. Steady or peak-hour burst profile. | Interactive warehouse, pooled connections |
-| **Cost model** | Before vs after monthly cost from inputs you enter. Nothing is prefilled and no savings are claimed. | — |
+| **Account desk** | The advisor's book (search, sort, status pills for copy mismatches, large 7-day flows and accounts behind benchmark) and the account page: summary KPIs, a query waterfall showing how long each widget took, holdings with an allocation donut, a filterable activity feed, and growth of $100 vs benchmark. **AI call prep** drafts a cited brief; the advisor writes a note and marks the call prepared. "Viewing as" switches between two advisors' books. | Interactive tables on an interactive warehouse; Cortex `AI_COMPLETE` |
+| **Architecture** | Before (warehouse → nightly ETL → reporting database → API) vs after (Snowflake → API), side by side on moving parts, freshness and position counts; the break table opens a position-by-position comparison. Export CSV or send the breaks to data ops. | Dynamic Tables, interactive tables |
+| **Load lab** | 4–32 concurrent simulated sessions run the four account-page query shapes. Market-open replay (from the seeded peak-hour trace), burst or steady. Shows p50/p95/p99, max, throughput, errors, a per-second timeline and a latency histogram, plus a run log. | Interactive warehouse, pooled connections, bound parameters |
+| **Cost model** | Before vs after monthly cost from inputs you enter, with a composition chart and a sensitivity curve by hours per day. Nothing is prefilled and no savings are claimed; an optional fill uses round placeholder numbers, labeled as such. | — |
 
 The app has a **Sample / Live** switch in the header. Sample mode uses `lib/mock/sample.json`: the same
 synthetic rows, latencies, load-test runs, and AI text captured from a live run (see
-`scripts/capture-sample.mjs`). Sample AI output is labeled **Sample AI response**. In Live mode, a failed
+`scripts/capture-sample.mjs`). Sample AI output is labeled **Sample AI response** and keeps a realistic 5–7 second delay with staged steps; Live mode shows the same steps and the measured latency. In Live mode, a failed
 call shows the error; it never falls back to sample data.
 
 ## Prerequisites
@@ -31,7 +32,7 @@ call shows the error; it never falls back to sample data.
   - Tested on Enterprise Edition. ACCOUNTADMIN to run setup (it creates a least-privilege role and runs everything else as that role).
   - Cortex AI access for the call prep brief (`SNOWFLAKE.CORTEX_USER`; setup grants it). The default model is `claude-sonnet-4-5`; set `SNOWFLAKE_COMPLETE_MODEL` if it isn't available in your region.
   - Key-pair authentication (or a programmatic access token) for the user running the app.
-- Tested with Next.js 16, snowflake-sdk 3.4, and Snowflake 10.41 in November 2026.
+- Tested with Next.js 16, snowflake-sdk 3.4, and Snowflake 10.42 in November 2026, with key-pair authentication.
 
 ## Quick start (no account)
 
@@ -71,34 +72,40 @@ Sample-mode bundle from your own run, and `npm run build:example` rebuilds the s
 | `SERVING.ACCOUNT_SUMMARY_IT`, `HOLDINGS_IT`, `ACTIVITY_IT`, `PERFORMANCE_IT` | Interactive tables with `TARGET_LAG = '1 hour'`, clustered by `(ADVISOR_ID, ACCOUNT_ID)` | What the account API queries |
 | `REPORTING_COPY.POSITIONS_COPY`, `LOAD_LOG`, `RECON_BREAKS` | Tables and a view | The simulated duplicate path and its reconciliation |
 
+No objects are created outside `CLIENT_VIEWS_DEMO`, the two warehouses and the role.
+
 ### Expected cost and time
 
-Measured in November 2026 on the account above:
+Measured on 2026-11-20 in one AWS US East account:
 
-- **Setup:** 2 minutes 48 seconds end to end; about **0.25 credits** on `CAV_WH` (XSMALL).
+- **Setup:** 2 minutes 53 seconds end to end; **0.30 credits** on `CAV_WH` (XSMALL), from `WAREHOUSE_METERING_HISTORY`.
 - **Interactive warehouse:** bills a minimum of **one hour** each time it resumes, then per second, and
   auto-suspends after one hour idle at the earliest. Budget at least one hour of an XSMALL interactive
-  warehouse per session; check `WAREHOUSE_METERING_HISTORY` for actual use. Run `sql/cleanup.sql`
-  (or `ALTER WAREHOUSE CAV_IWH SUSPEND`) when you're done.
+  warehouse per session at your rate in the Snowflake consumption table, and check
+  `WAREHOUSE_METERING_HISTORY` for actual use. Run `sql/cleanup.sql` (or `ALTER WAREHOUSE CAV_IWH SUSPEND`) when you're done.
 - **Dynamic and interactive table refresh:** 1-hour target lag on `CAV_WH`; refreshes are small after the first.
-- **AI_COMPLETE:** token charges per brief (one call of a few thousand input tokens).
+- **AI_COMPLETE:** token charges per brief (one call of a few thousand input tokens); a brief took 5–6 seconds.
+- **Time to try it live:** about 15 minutes including setup, capture not required.
 
 ### Measured latency
 
 Round trip from a laptop app server to an XSMALL interactive warehouse (one cluster), result cache off,
-500,000 accounts. These are the captured runs bundled in Sample mode; network distance dominates, so
-measure from your own servers.
+500,000 accounts, 5M current holdings, 50M activity rows. These are the captured runs bundled in Sample
+mode. Network distance dominates, so measure from your own servers.
 
-| Run | p50 | p95 | p99 | Throughput |
-| --- | --- | --- | --- | --- |
-| 4 sessions, steady, 20 s | 88 ms | 115 ms | 221 ms | 42.8 q/s |
-| 16 sessions, steady, 20 s | 89 ms | 108 ms | 134 ms | 171.6 q/s |
-| 32 sessions, steady, 20 s | 120 ms | 167 ms | 206 ms | 250.9 q/s |
-| 16 sessions, peak-hour burst, 30 s | 80 ms | 96 ms | 156 ms | 95.7 q/s |
-| 32 sessions, peak-hour burst, 30 s | 82 ms | 111 ms | 180 ms | 184.2 q/s |
+| Run | p50 | p95 | p99 | Throughput | Errors |
+| --- | --- | --- | --- | --- | --- |
+| 8 sessions, market-open replay, 30 s | 197 ms | 227 ms | 287 ms | 19.4 q/s | 0 |
+| 16 sessions, market-open replay, 30 s | 196 ms | 210 ms | 272 ms | 39.7 q/s | 0 |
+| 32 sessions, market-open replay, 30 s | 197 ms | 222 ms | 270 ms | 74.3 q/s | 0 |
+| 16 sessions, burst, 30 s | 195 ms | 210 ms | 240 ms | 40.5 q/s | 0 |
+| 32 sessions, burst, 30 s | 194 ms | 213 ms | 252 ms | 94.7 q/s | 0 |
+| 8 sessions, steady, 20 s | 194 ms | 239 ms | 431 ms | 45.2 q/s | 0 |
+| 32 sessions, steady, 20 s | 87 ms | 233 ms | 572 ms | 227.1 q/s | 0 |
 
-A single account page runs its four widget queries in parallel; warm, each took about 110–200 ms round trip
-in our tests. The first queries after the warehouse resumes are slower while its cache warms.
+An account page runs its four widget queries in parallel; across the 28 captured pages the median
+widget round trip was about 210 ms and the median page-ready time (slowest widget) about 225 ms. The
+first queries after the warehouse resumes, and right after setup, are slower while its cache warms.
 
 ## Known limitations
 
@@ -111,7 +118,8 @@ in our tests. The first queries after the warehouse resumes are slower while its
 - The load test runs inside the Next.js server process, so very high session counts measure the client
   too. Use a dedicated load generator for real capacity planning.
 - The duplicate path is simulated with a table in the same database; it isn't a real external database.
-- Flags on reconciliation breaks are saved in the browser only.
+- Prep notes, "Mark call prepared" and "Send to data ops" are saved in the browser only; wire them to your own system of record.
+- `AI_COMPLETE` model availability varies by region; set `SNOWFLAKE_COMPLETE_MODEL` if the default isn't available.
 
 ## Customize with Cortex Code
 
@@ -122,13 +130,13 @@ in our tests. The first queries after the warehouse resumes are slower while its
 ## Repository layout
 
 ```text
-app/                 Next.js pages (account page, architecture, load test, cost) and API routes
-components/          Shell, Sample/Live switch, staged progress, shared UI
+app/                 Next.js pages (account desk, architecture, load lab, cost) and API routes
+components/          Shell (top navigation), Sample/Live switch, account widgets, shared UI
 lib/                 Live queries (bound parameters, pooled connections), sample bundle, types
-scripts/             Sample capture, hosted example build, screenshot capture
+scripts/             Seeded data generator, sample capture, hosted example build, screenshot capture
 sql/                 setup.sql and cleanup.sql
-data/README.md       Synthetic data and planted stories
-docs/                GitHub Pages guide, screenshots, and the hosted example (docs/try/)
+data/                Seeded peak-hour trace and data/README.md (planted stories)
+docs/                GitHub Pages guide, DESIGN.md, screenshots, and the hosted example (docs/try/)
 ```
 
 ## License and disclaimer

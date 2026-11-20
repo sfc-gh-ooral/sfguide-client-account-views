@@ -1,158 +1,141 @@
 'use client';
 
-// Advisor account page: the screen end users see. Book explorer on the left, then the account's
-// summary, holdings, activity, and performance, each with the latency of its own query.
-import { FileText, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Reasoning } from '@/components/Reasoning';
-import { usePersona } from '@/components/Shell';
-import { Card, ErrorBox, Kpi, LatencyChip, Markdown, PoweredBy, SampleAiBadge, ScopeBadge, money, pct } from '@/components/ui';
+import { ArrowLeft, CalendarClock, GitCompareArrows } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { BookRail, STATUS, statusOf } from '@/components/account/BookRail';
+import { ActivityFeed, CallPrep, Holdings, Performance, Waterfall } from '@/components/account/Widgets';
+import { useAppState } from '@/components/AppState';
+import { ErrorBox, LatencyChip, Powered, Skel, pct, useCountUp, usd, usdShort } from '@/components/ui';
 import { useAsync } from '@/components/useAsync';
-import { fetchAccount, fetchBook, fetchBrief } from '@/lib/client';
+import { type BookSort, fetchAccount, fetchBook, fetchRecon } from '@/lib/client';
 import { ADVISORS } from '@/lib/personas';
-import type { AiBrief, PerfPoint } from '@/lib/types';
+import type { AccountPage } from '@/lib/types';
 
-function cumulative(points: PerfPoint[]) {
-  let a = 1, b = 1;
-  return points.map((p) => { a *= 1 + p.RETURN_PCT; b *= 1 + p.BENCHMARK_PCT; return { m: p.MONTH_END.slice(0, 7), account: +((a - 1) * 100).toFixed(2), benchmark: +((b - 1) * 100).toFixed(2) }; });
+function Kpi({ label, value, fmt, sub, tone }: { label: string; value: number; fmt: (n: number) => string; sub?: React.ReactNode; tone?: string }) {
+  const v = useCountUp(value);
+  return (
+    <div className="kpi">
+      <div className="eyebrow">{label}</div>
+      <div className="kpi-val mt-0.5" style={tone ? { color: tone } : undefined}>{fmt(v)}</div>
+      {sub && <div className="text-[12px] text-2 mt-0.5">{sub}</div>}
+    </div>
+  );
 }
 
-export default function AccountPage() {
-  const { persona } = usePersona();
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [account, setAccount] = useState(ADVISORS[persona].storyAccount);
-  useEffect(() => {
-    // Deep link from the architecture screen (?account=AC-…) on first load; otherwise the advisor's story account.
-    const linked = new URLSearchParams(window.location.search).get('account');
-    if (linked) window.history.replaceState(null, '', window.location.pathname);
-    setAccount(linked && /^AC-\d{6}$/.test(linked) ? linked : ADVISORS[persona].storyAccount); setQ(''); setDebounced('');
-  }, [persona]);
-  useEffect(() => { const t = setTimeout(() => setDebounced(q), 250); return () => clearTimeout(t); }, [q]);
-
-  const book = useAsync(() => fetchBook(persona, debounced), [persona, debounced]);
-  const page = useAsync(async () => { const t0 = performance.now(); const p = await fetchAccount(persona, account); return { ...p, pageMs: Math.round(performance.now() - t0) }; }, [persona, account]);
-  const [brief, setBrief] = useState<{ loading?: boolean; data?: AiBrief; error?: string }>({});
-  useEffect(() => setBrief({}), [persona, account]);
-  const askBrief = () => { setBrief({ loading: true }); fetchBrief(persona, account).then((data) => setBrief({ data }), (e) => setBrief({ error: String(e.message ?? e) })); };
-
-  const p = page.data;
-  const s = p?.summary;
-  const chart = p ? cumulative(p.performance) : [];
-  const alloc = p ? Object.entries(p.holdings.reduce<Record<string, number>>((m, h) => ({ ...m, [h.ASSET_CLASS]: (m[h.ASSET_CLASS] ?? 0) + h.MARKET_VALUE }), {})) : [];
-  const widgetMax = p ? Math.max(...Object.values(p.timings)) : 0;
-
+function AccountHeader({ page, breaks, onBack }: { page: AccountPage; breaks: Set<string>; onBack: () => void }) {
+  const s = page.summary!;
+  const st = statusOf(s, breaks);
+  const vsBench = s.YTD_RETURN - s.BENCH_YTD_RETURN;
   return (
-    <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <Card title="Your book" right={<LatencyChip ms={book.data?.latencyMs} source={book.data?.source} />} className="lg:sticky lg:top-20 self-start">
-        <label className="flex items-center gap-2 rounded-lg border px-2 py-1.5 mb-2" style={{ borderColor: 'var(--border)' }}>
-          <Search className="w-4 h-4 muted" aria-hidden />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search account or name" aria-label="Search accounts"
-            className="bg-transparent outline-none text-sm w-full" />
-        </label>
-        <div className="text-[11px] muted mb-2">{book.data ? `${book.data.total.toLocaleString()} accounts${book.data.source === 'captured' ? ` (${book.data.rows.length} bundled)` : ''} · by market value` : '…'}</div>
-        {book.error && <ErrorBox error={book.error} />}
-        <ul className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
-          {book.data?.rows.map((r) => (
-            <li key={r.ACCOUNT_ID}>
-              <button onClick={() => setAccount(r.ACCOUNT_ID)} aria-current={r.ACCOUNT_ID === account ? 'true' : undefined}
-                className={`w-full text-left rounded-lg px-2 py-1.5 text-sm ${r.ACCOUNT_ID === account ? 'book-active' : 'hover:bg-[var(--surface-2)]'}`}>
-                <div className="flex justify-between gap-2"><span className="truncate font-medium">{r.ACCOUNT_NAME}</span><span className="tabular">{money(r.MARKET_VALUE)}</span></div>
-                <div className="flex justify-between text-[11px] muted"><span>{r.ACCOUNT_ID} · {r.ACCOUNT_TYPE}</span><span>{pct(r.YTD_RETURN)}</span></div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Card>
+    <section className="panel fade-up">
+      <div className="p-4 flex flex-col md:flex-row md:items-start gap-3">
+        <button className="btn lg:hidden self-start" onClick={onBack}><ArrowLeft className="w-4 h-4" aria-hidden />Book</button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-[22px] font-semibold">{s.ACCOUNT_NAME}</h1>
+            {st !== 'ok' && <span className={`pill ${STATUS[st].cls}`}>{STATUS[st].label}</span>}
+          </div>
+          <div className="text-[12.5px] text-2 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span className="mono">{s.ACCOUNT_ID}</span><span>{s.ACCOUNT_TYPE}</span><span>{s.RISK_PROFILE} risk</span>
+            <span className="inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" aria-hidden />Opened {s.OPENED_ON}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap"><LatencyChip ms={page.timings.summary} source={page.source} /><Powered by="Interactive warehouse" /></div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 border-t" style={{ borderColor: 'var(--line)' }}>
+        <Kpi label="Market value" value={s.MARKET_VALUE} fmt={(n) => usd(n)} sub={`${s.POSITION_COUNT} positions`} />
+        <Kpi label="YTD return" value={s.YTD_RETURN} fmt={(n) => pct(n, 2)} tone={s.YTD_RETURN >= 0 ? 'var(--mint)' : 'var(--coral)'}
+          sub={<>benchmark {pct(s.BENCH_YTD_RETURN, 2)} · <span style={{ color: vsBench >= 0 ? 'var(--mint)' : 'var(--coral)' }}>{pct(vsBench, 2)}</span></>} />
+        <Kpi label="Net flow · 7 days" value={s.NET_FLOW_7D} fmt={(n) => usdShort(n)} tone={Math.abs(s.NET_FLOW_7D) >= 50_000 ? 'var(--saffron)' : undefined} sub="deposits minus withdrawals" />
+        <Kpi label="Last activity" value={0} fmt={() => s.LAST_ACTIVITY_TS.slice(5)} sub={`net flows 2y ${usdShort(s.NET_FLOWS_2Y)}`} />
+      </div>
+      {st === 'break' && (
+        <div className="px-4 py-2.5 border-t text-[12.5px] flex flex-wrap items-center gap-2" style={{ borderColor: 'var(--line)', background: 'var(--coral-soft)' }}>
+          <span>The nightly reporting copy holds fewer positions for this account than Snowflake does. This page reads the single source.</span>
+          <Link href="/architecture" className="inline-flex items-center gap-1 underline font-medium"><GitCompareArrows className="w-3.5 h-3.5" aria-hidden />See the reconciliation</Link>
+        </div>
+      )}
+    </section>
+  );
+}
 
-      <div className="space-y-5 min-w-0">
-        {page.error && <ErrorBox error={page.error} />}
-        {p && !s && <ErrorBox error={`${account} isn't in ${ADVISORS[persona].name}'s book. The API binds the advisor ID on every query, so nothing is returned.`} />}
-        {s && (
-          <>
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">{s.ACCOUNT_NAME}</h1>
-                <div className="text-sm muted">{s.ACCOUNT_ID} · {s.ACCOUNT_TYPE} · {s.RISK_PROFILE} · opened {s.OPENED_ON}</div>
+function DetailSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading account">
+      <div className="panel p-4 space-y-3"><Skel className="h-6 w-1/2" /><Skel className="h-4 w-1/3" /><div className="grid grid-cols-4 gap-4 pt-2">{[0, 1, 2, 3].map((i) => <Skel key={i} className="h-12" />)}</div></div>
+      <div className="grid xl:grid-cols-2 gap-4"><div className="panel p-4"><Skel className="h-40" /></div><div className="panel p-4"><Skel className="h-40" /></div></div>
+      <div className="panel p-4"><Skel className="h-56" /></div>
+    </div>
+  );
+}
+
+export default function AccountDesk() {
+  const { advisor, live, setLastTimings } = useAppState();
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [sort, setSort] = useState<BookSort>('value');
+  const [selected, setSelected] = useState<string>();
+  const [showDetail, setShowDetail] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setDebounced(search), 250); return () => clearTimeout(t); }, [search]);
+
+  const ready = live !== undefined;
+  const book = useAsync(() => (ready ? fetchBook(advisor, debounced, sort) : new Promise<never>(() => {})), [advisor, debounced, sort, ready]);
+  const recon = useAsync(() => (ready ? fetchRecon(advisor) : new Promise<never>(() => {})), [advisor, ready]);
+  const breaks = useMemo(() => new Set(recon.data?.breaks.map((b) => b.ACCOUNT_ID) ?? []), [recon.data]);
+
+  // Open the advisor's planted story account first.
+  useEffect(() => { setSelected(ADVISORS[advisor].storyAccount); setShowDetail(false); }, [advisor]);
+  const account = useAsync(() => (ready && selected ? fetchAccount(advisor, selected) : new Promise<never>(() => {})), [advisor, selected, ready]);
+  useEffect(() => { if (account.data) setLastTimings(account.data.timings); }, [account.data, setLastTimings]);
+
+  const st = book.data?.stats;
+  const a = ADVISORS[advisor];
+  return (
+    <div className="space-y-4">
+      <section className="flex flex-col xl:flex-row xl:items-end gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="eyebrow">Account desk · {a.branch}</div>
+          <h1 className="text-[26px] font-semibold leading-tight">{a.name}<span className="text-2 font-normal">’s book</span></h1>
+          <p className="text-[13px] text-2 mt-0.5">Every widget reads Snowflake directly, scoped to <span className="mono">{advisor}</span>, and shows how long it took.</p>
+        </div>
+        <div className="panel grid grid-cols-2 sm:grid-cols-4 xl:min-w-[640px]">
+          {st ? <>
+            <Kpi label="Accounts" value={st.accounts} fmt={(n) => Math.round(n).toLocaleString()} sub="in this book" />
+            <Kpi label="Book value" value={st.aum} fmt={usdShort} sub="current holdings" />
+            <Kpi label="Avg YTD" value={st.avgYtd} fmt={(n) => pct(n, 2)} tone={st.avgYtd >= 0 ? 'var(--mint)' : 'var(--coral)'} sub="simple average" />
+            <Kpi label="Copy mismatches" value={breaks.size} fmt={(n) => Math.round(n).toString()} tone={breaks.size ? 'var(--coral)' : 'var(--mint)'} sub="vs reporting copy" />
+          </> : [0, 1, 2, 3].map((i) => <div key={i} className="kpi"><Skel className="h-3 w-16 mb-2" /><Skel className="h-6 w-24" /></div>)}
+        </div>
+      </section>
+
+      {book.error && <div className="panel"><ErrorBox message={book.error} onRetry={book.reload} /></div>}
+
+      <div className="grid lg:grid-cols-[360px_1fr] gap-4 items-start">
+        <div className={showDetail ? 'hidden lg:block' : ''}>
+          <BookRail book={book.data} loading={book.loading} breaks={breaks} selected={selected}
+            onSelect={(id) => { setSelected(id); setShowDetail(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            search={search} setSearch={setSearch} sort={sort} setSort={setSort} />
+        </div>
+        <div className={`min-w-0 space-y-4 ${showDetail ? '' : 'hidden lg:block'}`}>
+          {account.loading && <DetailSkeleton />}
+          {account.error && <div className="panel"><ErrorBox message={account.error} onRetry={account.reload} /></div>}
+          {account.data?.summary && (
+            <>
+              <AccountHeader page={account.data} breaks={breaks} onBack={() => setShowDetail(false)} />
+              <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+                <Waterfall page={account.data} />
+                <CallPrep advisor={advisor} page={account.data} live={!!live} />
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <ScopeBadge advisor={persona} />
-                <PoweredBy>interactive tables</PoweredBy>
-                <span className="text-xs muted" title="Slowest widget query; the four run in parallel">
-                  Page data in {widgetMax} ms ({p.source === 'live' ? 'live' : 'captured'})
-                </span>
+              <Holdings page={account.data} />
+              <div className="grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-4">
+                <Performance page={account.data} />
+                <ActivityFeed page={account.data} />
               </div>
-            </div>
-
-            <Card title="Summary" right={<LatencyChip ms={p.timings.summary} source={p.source} />}>
-              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 stagger">
-                <Kpi label="Market value" value={money(s.MARKET_VALUE)} sub={`as of ${p.holdings[0]?.AS_OF_DATE ?? ''}`} />
-                <Kpi label="YTD return" value={pct(s.YTD_RETURN, 2)} sub="Jan–Oct 2026" />
-                <Kpi label="Positions" value={String(s.POSITION_COUNT)} sub="from the single source" />
-                <Kpi label="Last activity" value={s.LAST_ACTIVITY_TS.slice(5, 10).replace('-', '/')} sub={s.LAST_ACTIVITY_TS.slice(11)} />
-              </div>
-            </Card>
-
-            <div className="grid gap-5 xl:grid-cols-2">
-              <Card title="Holdings" right={<LatencyChip ms={p.timings.holdings} source={p.source} />}>
-                <div className="flex gap-1 mb-3 h-2 rounded-full overflow-hidden" aria-label="Allocation by asset class">
-                  {alloc.map(([k, v], i) => <span key={k} title={`${k}: ${money(v)}`} style={{ width: `${(v / s.MARKET_VALUE) * 100}%`, background: `var(--chart-${i + 1})` }} />)}
-                </div>
-                <div className="flex gap-3 flex-wrap text-[11px] muted mb-2">{alloc.map(([k, v], i) => <span key={k}><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: `var(--chart-${i + 1})` }} />{k} {((v / s.MARKET_VALUE) * 100).toFixed(0)}%</span>)}</div>
-                <div className="overflow-x-auto">
-                  <table className="data-table w-full text-sm">
-                    <thead><tr><th className="text-left">Security</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Value</th></tr></thead>
-                    <tbody>{p.holdings.map((h) => (
-                      <tr key={h.SECURITY_ID}><td><div className="font-medium">{h.SECURITY_NAME}</div><div className="text-[11px] muted">{h.SECURITY_ID} · {h.ASSET_CLASS}</div></td>
-                        <td className="text-right tabular">{h.QUANTITY.toLocaleString()}</td><td className="text-right tabular">${h.PRICE.toFixed(2)}</td><td className="text-right tabular">{money(h.MARKET_VALUE)}</td></tr>))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card title="Activity" right={<LatencyChip ms={p.timings.activity} source={p.source} />}>
-                <ul className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {p.activity.slice(0, 12).map((a) => (
-                    <li key={a.ACTIVITY_ID} className="py-2 flex items-center justify-between gap-3 text-sm">
-                      <div className="min-w-0"><div className="font-medium">{a.ACTIVITY_TYPE}{a.SECURITY_ID && !['Deposit', 'Withdrawal', 'Fee', 'Interest'].includes(a.ACTIVITY_TYPE) ? ` · ${a.SECURITY_ID}` : ''}</div>
-                        <div className="text-[11px] muted">{a.ACTIVITY_TS}</div></div>
-                      <div className={`tabular ${a.ACTIVITY_TYPE === 'Withdrawal' || a.ACTIVITY_TYPE === 'Fee' ? 'text-[var(--negative)]' : ''}`}>{a.ACTIVITY_TYPE === 'Withdrawal' || a.ACTIVITY_TYPE === 'Fee' ? '−' : ''}{money(a.AMOUNT)}</div>
-                    </li>))}
-                </ul>
-              </Card>
-            </div>
-
-            <Card title="Performance: cumulative return vs benchmark, 24 months" right={<LatencyChip ms={p.timings.performance} source={p.source} />}>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chart} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="m" tick={{ fontSize: 11, fill: 'var(--muted)' }} interval={3} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} unit="%" width={44} />
-                    <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 12 }} formatter={(v) => `${v}%`} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Area type="monotone" dataKey="account" name="Account" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.15} strokeWidth={2} />
-                    <Area type="monotone" dataKey="benchmark" name="Benchmark" stroke="var(--chart-4)" fill="var(--chart-4)" fillOpacity={0.05} strokeWidth={2} strokeDasharray="4 3" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            <Card title="Call prep brief" right={brief.data ? (brief.data.source === 'sample' ? <SampleAiBadge /> : <><PoweredBy>AI_COMPLETE</PoweredBy><span className="text-[11px] muted">{brief.data.model} · {brief.data.latencyMs.toLocaleString()} ms</span></>) : <PoweredBy>Cortex AI</PoweredBy>}>
-              {!brief.loading && !brief.data && (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <p className="text-sm text-2">Summarize this account for a client call from the same rows shown above. The advisor reviews it; nothing is sent to the client.</p>
-                  <button className="btn btn-primary" onClick={askBrief}><FileText className="w-4 h-4" aria-hidden />Draft brief</button>
-                </div>
-              )}
-              {brief.loading && <Reasoning kind="brief" />}
-              {brief.error && <ErrorBox error={brief.error} />}
-              {brief.data && <div className="ai-panel"><Markdown text={brief.data.text} /><p className="text-[11px] muted mt-2">Draft for advisor review. Not investment advice.</p></div>}
-            </Card>
-          </>
-        )}
-        {page.loading && !p && <div className="card p-6 text-sm muted">Loading account…</div>}
+            </>
+          )}
+          {account.data && !account.data.summary && <div className="panel p-6 text-sm text-2">This account isn’t in {a.name}’s book. Each advisor sees only their own accounts.</div>}
+        </div>
       </div>
     </div>
   );

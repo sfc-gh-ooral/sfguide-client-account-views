@@ -1,116 +1,206 @@
 'use client';
 
-// Small shared UI pieces: badges, cards, KPI tiles, and a tiny markdown renderer for AI text.
-import { Bot, ShieldCheck, Sparkles, Timer } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { AlertTriangle, Check, Loader2, Sparkles, Timer, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
-export const money = (x: number): string => {
-  if (x < 0) return `−${money(-x)}`;
-  return x >= 1e9 ? `$${(x / 1e9).toFixed(2)}B` : x >= 1e6 ? `$${(x / 1e6).toFixed(2)}M` : x >= 1e3 ? `$${Math.round(x / 1e3)}K` : `$${Math.round(x)}`;
+// ---------- Formatting ----------
+export const usd = (n: number, digits = 0) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits, minimumFractionDigits: digits });
+export const usdShort = (n: number) => {
+  const a = Math.abs(n);
+  const s = a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);
+  return `${n < 0 ? '−' : ''}$${s}`;
 };
+export const pct = (n: number, digits = 1) => `${n >= 0 ? '+' : '−'}${Math.abs(n * 100).toFixed(digits)}%`;
+export const int = (n: number) => Math.round(n).toLocaleString('en-US');
 
-export function Card({ title, right, children, className = '' }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
+// ---------- Brand ----------
+export function LogoMark({ size = 28 }: { size?: number }) {
   return (
-    <section className={`card p-4 ${className}`}>
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="9" fill="#F2A93B" />
+      <rect x="13" y="4" width="6" height="3" rx="1.5" fill="#15171B" />
+      <circle cx="16" cy="18" r="9" fill="none" stroke="#15171B" strokeWidth="2.6" />
+      <path d="M16 18 L21 13" stroke="#15171B" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ---------- Layout ----------
+export function Panel({ title, eyebrow, right, children, className = '', bodyClass = '' }: {
+  title?: React.ReactNode; eyebrow?: string; right?: React.ReactNode; children: React.ReactNode; className?: string; bodyClass?: string;
+}) {
+  return (
+    <section className={`panel fade-up min-w-0 ${className}`}>
       {(title || right) && (
-        <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-          {title && <h2 className="text-sm font-semibold">{title}</h2>}
+        <header className="panel-head flex-wrap">
+          <div className="min-w-0">
+            {eyebrow && <div className="eyebrow mb-0.5">{eyebrow}</div>}
+            {title && <h2 className="panel-title">{title}</h2>}
+          </div>
           {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
-        </div>
+        </header>
       )}
-      {children}
+      <div className={bodyClass}>{children}</div>
     </section>
   );
 }
 
-export function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card kpi card-hover p-4">
-      <div className="text-[11px] uppercase tracking-wider muted mb-1 font-semibold">{label}</div>
-      <div className="kpi-value text-[26px] font-bold tabular tracking-tight">{value}</div>
-      {sub && <div className="text-xs muted mt-1">{sub}</div>}
-    </div>
-  );
+/** Counts up from 0 to the value on first show, unless reduced motion is on. */
+export function useCountUp(target: number, ms = 600) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setV(target); return; }
+    let raf = 0; const t0 = performance.now();
+    const step = (t: number) => { const k = Math.min(1, (t - t0) / ms); setV(target * (1 - (1 - k) ** 3)); if (k < 1) raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
 }
 
-function Pill({ children, color, bg, title }: { children: ReactNode; color: string; bg: string; title?: string }) {
+export const latClass = (ms: number) => (ms < 150 ? 'lat-fast' : ms < 600 ? 'lat-mid' : 'lat-slow');
+
+/** The latency chip on every widget: measured round trip, plus where it came from. */
+export function LatencyChip({ ms, source, warehouse }: { ms: number; source: 'live' | 'captured'; warehouse?: string }) {
+  const v = useCountUp(ms);
+  const where = source === 'live' ? `live${warehouse ? ` · ${warehouse}` : ''}` : 'captured';
   return (
-    <span title={title} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap" style={{ color, background: bg }}>
-      {children}
+    <span className={`lat ${latClass(ms)}`} title={source === 'live' ? 'Measured on the app server for this request' : 'Measured in a live run and bundled with this example'}>
+      <Timer className="w-3 h-3" aria-hidden /><b>{Math.round(v)} ms</b><span className="src">{where}</span>
     </span>
   );
 }
 
-/** Names the Snowflake capability behind a component. */
-export function PoweredBy({ children }: { children: ReactNode }) {
-  return <Pill color="var(--accent)" bg="var(--accent-soft)"><Sparkles className="w-3 h-3" aria-hidden />Powered by {children}</Pill>;
+export function Powered({ by }: { by: string }) {
+  return <span className="powered">Powered by <b>{by}</b></span>;
 }
 
-export function SampleAiBadge() {
-  return <Pill color="var(--sample)" bg="var(--sample-soft)" title="Scripted answer in no-account mode, not live Cortex output"><Bot className="w-3 h-3" aria-hidden />Sample AI response</Pill>;
+export function Skel({ className = '' }: { className?: string }) {
+  return <div className={`skel ${className}`} aria-hidden />;
 }
 
-/** The advisor scope the API applied to every query on this component. */
-export function ScopeBadge({ advisor }: { advisor: string }) {
-  return <Pill color="var(--positive)" bg="color-mix(in srgb, var(--positive) 14%, transparent)" title="Every query binds ADVISOR_ID, so only this advisor's rows are read"><ShieldCheck className="w-3 h-3" aria-hidden />Scoped to {advisor}</Pill>;
-}
-
-/** Query round trip for one widget: measured now (Live) or from the bundled live capture (Sample). */
-export function LatencyChip({ ms, source }: { ms?: number; source?: 'live' | 'captured' }) {
-  if (ms === undefined || !source) return null;
-  const live = source === 'live';
+export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <Pill color={live ? 'var(--positive)' : 'var(--text-2)'} bg={live ? 'color-mix(in srgb, var(--positive) 12%, transparent)' : 'var(--surface-2)'}
-      title={live ? 'Measured round trip from the app server to Snowflake, just now' : 'Round trip captured from a live run on an XSMALL interactive warehouse'}>
-      <Timer className="w-3 h-3" aria-hidden />{ms.toLocaleString()} ms · {live ? 'live' : 'captured'}
-    </Pill>
+    <div role="alert" className="m-4 p-3 rounded-lg flex items-start gap-3 text-sm" style={{ background: 'var(--coral-soft)', color: 'var(--coral)' }}>
+      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+      <div className="min-w-0 flex-1"><div className="font-semibold">Couldn’t load this from Snowflake</div><div className="break-words" style={{ color: 'var(--ink)' }}>{message}</div></div>
+      {onRetry && <button className="btn" onClick={onRetry}>Retry</button>}
+    </div>
   );
 }
 
-export function ErrorBox({ error }: { error: string }) {
-  return <div role="alert" className="card p-4 text-sm" style={{ borderColor: 'var(--negative)', color: 'var(--negative)' }}><strong>Live call failed.</strong> {error}</div>;
+export function Empty({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="p-8 text-center">
+      <div className="font-semibold">{title}</div>
+      {hint && <div className="text-sm text-2 mt-1">{hint}</div>}
+    </div>
+  );
 }
 
-export const pct = (x: number, d = 1) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(d)}%`;
-
-export function Thinking({ label = 'Thinking' }: { label?: string }) {
-  return <div className="thinking text-xs muted flex items-center gap-2" role="status"><span /><span /><span />{label}…</div>;
+export function Drawer({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    ref.current?.focus();
+    return () => window.removeEventListener('keydown', k);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <div className="drawer" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'} tabIndex={-1} ref={ref}>
+        <header className="panel-head">
+          <div className="min-w-0"><h2 className="panel-title truncate">{title}</h2>{subtitle && <div className="text-xs text-2 mt-0.5">{subtitle}</div>}</div>
+          <button className="btn !px-2" onClick={onClose} aria-label="Close"><X className="w-4 h-4" /></button>
+        </header>
+        <div className="flex-1 overflow-y-auto">{children}</div>
+      </div>
+    </>
+  );
 }
 
-// Minimal markdown: headings by bold, lists, tables, bold/italic. Text is escaped by React.
-function inline(s: string, key: number): ReactNode {
-  const parts = s.split(/(\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*)/g).filter(Boolean);
-  return <span key={key}>{parts.map((p, i) =>
-    p.startsWith('**') ? <strong key={i}>{p.slice(2, -2)}</strong>
-      : (p.startsWith('_') && p.endsWith('_')) || (p.startsWith('*') && p.endsWith('*')) ? <em key={i}>{p.slice(1, -1)}</em>
-        : p)}</span>;
+// ---------- AI ----------
+export function SampleAiLabel() {
+  return <span className="pill pill-plum"><Sparkles className="w-3 h-3" aria-hidden />Sample AI response</span>;
 }
-export function Markdown({ text }: { text: string }) {
-  const lines = text.replace(/\r/g, '').split('\n');
-  const out: ReactNode[] = [];
-  let i = 0, k = 0;
-  while (i < lines.length) {
-    const l = lines[i];
-    if (l.trim().startsWith('|')) {
-      const rows: string[][] = [];
-      while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(lines[i].split('|').slice(1, -1).map((c) => c.trim())); i++; }
-      const body = rows.filter((r) => !r.every((c) => /^:?-{2,}:?$/.test(c)));
-      out.push(<table key={k++}><thead><tr>{body[0].map((c, j) => <th key={j}>{inline(c, j)}</th>)}</tr></thead>
-        <tbody>{body.slice(1).map((r, ri) => <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, j)}</td>)}</tr>)}</tbody></table>);
-      continue;
-    }
-    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
-      const ordered = /^\s*\d+\./.test(l);
-      const items: string[] = [];
-      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '')); i++; }
-      const li = items.map((t, j) => <li key={j}>{inline(t, j)}</li>);
-      out.push(ordered ? <ol key={k++}>{li}</ol> : <ul key={k++}>{li}</ul>);
-      continue;
-    }
-    if (/^\s*([-*_])\1{2,}\s*$/.test(l)) { i++; continue; } // horizontal rule
-    if (/^#{1,4}\s/.test(l)) { out.push(<p key={k++}><strong>{l.replace(/^#+\s/, '')}</strong></p>); i++; continue; }
-    if (l.trim()) out.push(<p key={k++}>{inline(l, 0)}</p>);
-    i++;
-  }
-  return <div className="prose-ai text-sm leading-relaxed">{out}</div>;
+
+/**
+ * Staged progress for a running call. Steps advance on a timer paced to `expectMs` (Sample mode
+ * uses its scripted delay; Live uses a typical duration with no added wait) and the last step holds
+ * until the answer arrives. Steps must describe work the live path really does.
+ */
+export function Steps({ steps, expectMs, done }: { steps: string[]; expectMs: number; done: boolean }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (done) return;
+    const t0 = Date.now();
+    const id = window.setInterval(() => setElapsed(Date.now() - t0), 100);
+    return () => window.clearInterval(id);
+  }, [done]);
+  const at = done ? steps.length : Math.min(steps.length - 1, Math.floor(elapsed / (expectMs / steps.length)));
+  return (
+    <div role="status" aria-live="polite" className="space-y-1.5">
+      {steps.map((s, i) => {
+        const state = i < at ? 'done' : i === at ? 'active' : 'todo';
+        return (
+          <div key={s} className={`step ${state}`}>
+            {state === 'done' ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--mint)' }} aria-hidden />
+              : state === 'active' ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--plum)' }} aria-hidden />
+              : <span className="w-3.5 h-3.5 rounded-full border" style={{ borderColor: 'var(--line)' }} aria-hidden />}
+            <span>{s}</span>
+          </div>
+        );
+      })}
+      {!done && <div className="mono text-[11px] text-2 pt-1">{(elapsed / 1000).toFixed(1)} s</div>}
+    </div>
+  );
+}
+
+/** Reveals text word by word, like a streamed answer. Source tags such as [H] render as citation chips. */
+export function StreamText({ text, onDone }: { text: string; onDone?: () => void }) {
+  const words = text.split(/(\s+)/);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    setN(0);
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setN(words.length); onDone?.(); return; }
+    let i = 0;
+    const id = window.setInterval(() => { i += 2; setN(i); if (i >= words.length) { window.clearInterval(id); onDone?.(); } }, 28);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  const shown = words.slice(0, n).join('');
+  const lines = shown.split('\n').filter((l, i, a) => l.trim() || i < a.length - 1);
+  return (
+    <div className={`text-[13.5px] leading-relaxed space-y-1.5 ${n < words.length ? 'cursor' : ''}`}>
+      {lines.map((l, i) => {
+        const bullet = /^\s*[-•*]\s+/.test(l);
+        const body = l.replace(/^\s*[-•*]\s+/, '').replace(/\*\*/g, '');
+        const parts = body.split(/(\[[SHAP]\])/g);
+        return (
+          <p key={i} className={bullet ? 'pl-4 relative' : ''}>
+            {bullet && <span className="absolute left-0" style={{ color: 'var(--plum)' }}>•</span>}
+            {parts.map((p, j) => /^\[[SHAP]\]$/.test(p) ? <span key={j} className="cite">{p[1]}</span> : <span key={j}>{p}</span>)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ChartTip({ active, payload, label, fmt }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string; fmt?: (v: number, name: string) => string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tip">
+      <div className="mono text-[11px] text-2 mb-1">{label}</div>
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} aria-hidden />
+          <span className="text-2">{p.name}</span><span className="mono ml-auto pl-3">{fmt ? fmt(p.value, p.name) : p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }

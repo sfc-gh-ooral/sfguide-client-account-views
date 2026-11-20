@@ -1,107 +1,124 @@
 'use client';
 
-// App frame: navigation, the "View as" persona switcher, mode notice, and the disclaimer.
-import { Calculator, Gauge, LayoutDashboard, Menu, Network, Zap, X } from 'lucide-react';
+import { BarChart3, ChevronDown, Gauge, GitCompareArrows, LayoutList, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState } from 'react';
+import { AppStateProvider, useAppState } from '@/components/AppState';
 import { ModeChip } from '@/components/ModeChip';
+import { LogoMark } from '@/components/ui';
 import { HOSTED_EXAMPLE } from '@/lib/hosted';
-import { ADVISORS as PERSONAS, ADVISOR_IDS as PERSONA_IDS, isAdvisorId as isPersonaId } from '@/lib/personas';
-import type { AdvisorId as PersonaId } from '@/lib/types';
+import { ADVISOR_IDS, ADVISORS } from '@/lib/personas';
+import type { AdvisorId } from '@/lib/types';
 
-const PersonaContext = createContext<{ persona: PersonaId; setPersona: (p: PersonaId) => void }>({ persona: 'ADV-0017', setPersona: () => {} });
-export const usePersona = () => useContext(PersonaContext);
-
+const REPO = 'https://github.com/sfc-gh-ooral/sfguide-client-account-views';
 const NAV = [
-  { href: '/', label: 'Account page', icon: LayoutDashboard },
-  { href: '/architecture', label: 'Architecture compare', icon: Network },
-  { href: '/load-test', label: 'Load test', icon: Gauge },
-  { href: '/cost', label: 'Cost model', icon: Calculator },
+  { href: '/', label: 'Account desk', icon: LayoutList },
+  { href: '/architecture', label: 'Architecture', icon: GitCompareArrows },
+  { href: '/load-test', label: 'Load lab', icon: Gauge },
+  { href: '/cost', label: 'Cost model', icon: BarChart3 },
 ];
 
-export default function Shell({ children }: { children: ReactNode }) {
-  const [persona, setPersonaState] = useState<PersonaId>('ADV-0017');
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  useEffect(() => {
-    const saved = window.localStorage.getItem('cav-advisor');
-    if (isPersonaId(saved)) setPersonaState(saved);
-  }, []);
-  useEffect(() => setOpen(false), [pathname]);
-  // Mobile drawer: Escape closes, focus moves into the drawer on open and back to the toggle on close.
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (open) closeRef.current?.focus();
-    else if (wasOpen.current) toggleRef.current?.focus();
-    wasOpen.current = open;
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
-  const setPersona = (p: PersonaId) => { setPersonaState(p); window.localStorage.setItem('cav-advisor', p); };
-  const p = PERSONAS[persona];
-  const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
-
+function AdvisorChip() {
+  const { advisor, setAdvisor } = useAppState();
+  const a = ADVISORS[advisor];
   return (
-    <PersonaContext.Provider value={{ persona, setPersona }}>
-      <div className="min-h-screen flex">
-        <aside id="main-nav" className={`sidebar fixed inset-y-0 left-0 z-40 w-60 flex flex-col border-r md:translate-x-0 md:visible ${open ? 'translate-x-0 transition-transform' : '-translate-x-full invisible transition-[transform,visibility]'}`}
-          aria-label="Main navigation">
-          <div className="px-5 py-5 border-b flex items-center gap-3" style={{ borderColor: 'rgba(255,255,255,.08)' }}>
-            <div className="icon-tile w-9 h-9 rounded-xl flex items-center justify-center"><Zap className="w-4 h-4" aria-hidden /></div>
-            <div>
-              <div className="text-sm font-semibold leading-tight text-white">Client Account Views</div>
-              <div className="text-[11px] muted">Example on synthetic data</div>
-            </div>
-            <button ref={closeRef} className="md:hidden ml-auto btn !px-2" onClick={() => setOpen(false)} aria-label="Close menu"><X className="w-4 h-4" /></button>
-          </div>
-          <nav className="flex-1 px-3 py-3 space-y-1">
-            {NAV.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} aria-current={active(href) ? 'page' : undefined}
-                className="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium no-underline">
-                <Icon className="w-4 h-4" aria-hidden />{label}
-              </Link>
+    <label className="chip-dark relative cursor-pointer" title="Viewing as: the API scopes every query to this advisor's book">
+      <span className="w-6 h-6 rounded-md grid place-items-center text-[11px] font-bold" style={{ background: '#2e333d' }} aria-hidden>{a.initials}</span>
+      <span className="hidden lg:flex flex-col leading-tight">
+        <span className="text-[10px] uppercase tracking-wider" style={{ color: '#a8acb5' }}>Viewing as</span>
+        <span className="font-medium">{a.name}</span>
+      </span>
+      <ChevronDown className="w-3.5 h-3.5" style={{ color: '#a8acb5' }} aria-hidden />
+      <select aria-label="Viewing as advisor" className="absolute inset-0 opacity-0 cursor-pointer" value={advisor} onChange={(e) => setAdvisor(e.target.value as AdvisorId)}>
+        {ADVISOR_IDS.map((id) => <option key={id} value={id}>{ADVISORS[id].name} · {id}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function EnvBadge() {
+  const { live } = useAppState();
+  if (live === undefined) return null;
+  return <span className={`env-badge ${live ? 'env-live' : 'env-sample'}`}>{live ? 'Live · Snowflake' : HOSTED_EXAMPLE ? 'Hosted sample' : 'Sample data'}</span>;
+}
+
+/** The last account page's widget timings, as a segmented strip under the navigation. */
+function TimingStrip() {
+  const { lastTimings } = useAppState();
+  const parts = lastTimings ? [
+    { k: 'summary', v: lastTimings.summary, c: 'var(--saffron)' }, { k: 'holdings', v: lastTimings.holdings, c: 'var(--mint)' },
+    { k: 'activity', v: lastTimings.activity, c: 'var(--sky)' }, { k: 'performance', v: lastTimings.performance, c: 'var(--plum)' },
+  ] : [];
+  const total = parts.reduce((s, p) => s + p.v, 0) || 1;
+  return (
+    <div className="timing-strip" aria-hidden>
+      {parts.map((p) => <span key={p.k} style={{ width: `${(p.v / total) * 100}%`, background: p.c }} />)}
+    </div>
+  );
+}
+
+function Frame({ children }: { children: React.ReactNode }) {
+  const path = usePathname();
+  const [open, setOpen] = useState(false);
+  const current = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="topbar sticky top-0 z-30">
+        <div className="max-w-[1480px] mx-auto px-3 sm:px-5 flex items-center gap-3 h-14">
+          <button className="md:hidden p-1.5 -ml-1 rounded-md" onClick={() => setOpen(!open)} aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open}>
+            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="Quillstone Advisor Desk home">
+            <LogoMark />
+            <span className="leading-none">
+              <span className="display font-semibold text-[16px] hidden min-[420px]:inline">Quillstone</span>
+              <span className="hidden sm:inline ml-2 text-[10.5px] uppercase tracking-[0.16em]" style={{ color: '#a8acb5' }}>Advisor Desk</span>
+            </span>
+          </Link>
+          <nav className="hidden md:flex items-center ml-4" aria-label="Main">
+            {NAV.map(({ href, label, icon: I }) => (
+              <Link key={href} href={href} className="navtab" aria-current={current(href) ? 'page' : undefined}><I className="w-4 h-4" aria-hidden />{label}</Link>
             ))}
           </nav>
-          <div className="px-4 py-4 border-t text-[11px] muted leading-relaxed" style={{ borderColor: 'rgba(255,255,255,.08)' }}>
-            Synthetic data and illustrative logic. Not production, investment, regulatory, or compliance advice. Latencies are from real runs on the stated warehouse and data volume; yours will differ.
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span className="hidden sm:inline-flex"><EnvBadge /></span>
+            <AdvisorChip />
+            <ModeChip />
           </div>
-        </aside>
-
-        <div className="flex-1 md:ml-60 min-w-0">
-          {HOSTED_EXAMPLE && (
-            <div role="note" className="px-4 md:px-8 py-2 text-xs border-b" style={{ background: 'var(--sample-soft)', borderColor: 'var(--border)', color: 'var(--text-2)' }}>
-              <strong style={{ color: 'var(--text)' }}>Sample data mode.</strong> Runs entirely in your browser on synthetic data; no Snowflake account needed. Latencies are captured from a live run; AI answers are scripted samples, not live Cortex output.{' '}
-              <a href="https://github.com/sfc-gh-ooral/sfguide-client-account-views" className="underline underline-offset-2">Run it in your own account</a>
-            </div>
-          )}
-          <header className="glass sticky top-0 z-30 flex items-center gap-3 px-4 md:px-8 py-3 border-b flex-wrap" style={{ borderColor: 'var(--border)' }}>
-            <button ref={toggleRef} className="md:hidden btn !px-2" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open} aria-controls="main-nav"><Menu className="w-4 h-4" /></button>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{p.name}</div>
-              <div className="text-xs muted truncate">{p.title}</div>
-            </div>
-            <div className="ml-auto"><ModeChip /></div>
-            <div className="flex items-center gap-2" role="group" aria-label="View as persona">
-              <span className="text-xs muted hidden sm:inline">View as</span>
-              <div className="seg flex">
-                {PERSONA_IDS.map((id) => (
-                  <button key={id} onClick={() => setPersona(id)} aria-pressed={persona === id}
-                    className="px-3 py-1.5 text-xs font-medium">
-                    {PERSONAS[id].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </header>
-          <main key={pathname} className="fade-up px-4 md:px-8 py-6 max-w-[1400px]">{children}</main>
         </div>
-        {open && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setOpen(false)} aria-hidden />}
-      </div>
-    </PersonaContext.Provider>
+        {open && (
+          <nav className="md:hidden border-t px-3 pb-3 pt-1 fade-up" style={{ borderColor: '#262a32' }} aria-label="Main">
+            {NAV.map(({ href, label, icon: I }) => (
+              <Link key={href} href={href} onClick={() => setOpen(false)} className="flex items-center gap-3 px-2 py-2.5 rounded-md"
+                style={{ color: current(href) ? '#f2a93b' : '#eceae4' }} aria-current={current(href) ? 'page' : undefined}><I className="w-4 h-4" aria-hidden />{label}</Link>
+            ))}
+            <div className="px-2 pt-2"><EnvBadge /></div>
+          </nav>
+        )}
+        <TimingStrip />
+      </header>
+
+      {HOSTED_EXAMPLE && (
+        <div className="text-[12.5px] px-4 py-2 text-center" style={{ background: 'var(--plum-soft)' }}>
+          <b>Hosted example, Sample mode.</b> <span className="text-2">Runs in your browser on synthetic data; timings and AI text were captured from a live run.</span>{' '}
+          <a className="underline" href={`${REPO}#live-mode-deploy-to-your-account`}>Run it live in your own account</a>
+        </div>
+      )}
+
+      <main className="flex-1 w-full max-w-[1480px] mx-auto px-3 sm:px-5 py-4 sm:py-5">{children}</main>
+
+      <footer className="border-t text-[12px] text-2" style={{ borderColor: 'var(--line)' }}>
+        <div className="max-w-[1480px] mx-auto px-3 sm:px-5 py-4 flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+          <p><b style={{ color: 'var(--ink)' }}>Synthetic example.</b> Quillstone and every advisor, account and fund are fictional. Illustrative logic only:
+            not production, investment, regulatory or compliance advice. Not an official Snowflake product.</p>
+          <a className="underline shrink-0" href={REPO}>Repository and setup guide</a>
+        </div>
+      </footer>
+    </div>
   );
+}
+
+export default function Shell({ children }: { children: React.ReactNode }) {
+  return <AppStateProvider><Frame>{children}</Frame></AppStateProvider>;
 }
