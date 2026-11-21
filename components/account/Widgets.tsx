@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, RotateCcw, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Area, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChartTip, LatencyChip, Panel, Powered, SampleAiLabel, Steps, StreamText, int, latClass, pct, usd, usdShort } from '@/components/ui';
+import { ChartTip, LatencyChip, Panel, Powered, SampleAiLabel, Steps, StreamText, int, latClass, usd, usdShort } from '@/components/ui';
 import { fetchBrief } from '@/lib/client';
 import type { AccountPage, Activity, AiBrief, Holding, PerfPoint, Timings } from '@/lib/types';
 
@@ -149,8 +149,13 @@ export function ActivityFeed({ page }: { page: AccountPage }) {
 
 export function Performance({ page }: { page: AccountPage }) {
   const data = useMemo(() => {
+    const out: { m: string; Account: number; Benchmark: number }[] = [];
     let a = 100, b = 100;
-    return page.performance.map((p: PerfPoint) => { a *= 1 + p.RETURN_PCT; b *= 1 + p.BENCHMARK_PCT; return { m: p.MONTH_END.slice(0, 7), Account: +a.toFixed(2), Benchmark: +b.toFixed(2) }; });
+    for (const p of page.performance as PerfPoint[]) {
+      a *= 1 + p.RETURN_PCT; b *= 1 + p.BENCHMARK_PCT;
+      out.push({ m: p.MONTH_END.slice(0, 7), Account: +a.toFixed(2), Benchmark: +b.toFixed(2) });
+    }
+    return out;
   }, [page.performance]);
   const last = data[data.length - 1];
   return (
